@@ -7,3 +7,5 @@
 *.pyc
 *.out
 .vscode/launch.json
+
+tmp*
