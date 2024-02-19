@@ -9,3 +9,7 @@
 .vscode/launch.json
 
 tmp*
+configs_coding/*
+!configs_coding/*default.toml
+data_directories.toml
+executable_paths.toml

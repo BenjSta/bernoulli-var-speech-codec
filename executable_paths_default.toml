@@ -1,2 +1,2 @@
-lyra_encoder = "/media/DATA/shared/stahl/lyra_executable/lyra/cli_example/encoder_main"
-lyra_decoder = "/media/DATA/shared/stahl/lyra_executable/lyra/cli_example/decoder_main"
+lyra_encoder = ""
+lyra_decoder = ""
