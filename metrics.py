@@ -1,6 +1,6 @@
 import scipy.signal
 import numpy as np
-from werpy import wer as compute_wer
+from werpy import wer as compute_wer, normalize as norm_text
 from third_party.dnsmos_local import ComputeScore
 from pesq import pesq
 import tqdm
@@ -79,4 +79,4 @@ def compute_mean_wacc(list_of_signals, list_of_texts, fs, asr_model):
             )["text"]
         )
 
-    return 1 - compute_wer(list_of_texts, list_of_transcripts)
+    return 1 - compute_wer(norm_text(list_of_texts), norm_text(list_of_transcripts).replace('', ' '))
