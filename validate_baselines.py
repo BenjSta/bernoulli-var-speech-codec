@@ -270,7 +270,7 @@ lengths_all = np.array([y.shape[0] for y in clean_all])
 
 for sw, sigs_method in zip(sws, sigs):
     pesq = compute_pesq(clean_all, sigs_method, 48000)
-    stoi_est, pesq_est, sisdr_est = compute_estimated_metrics(sigs_method, 48000) 
+    stoi_est, pesq_est, sisdr_est, mos = compute_estimated_metrics(clean_all, sigs_method, 48000) 
     ovr, sig, bak = compute_dnsmos(sigs_method, 48000)
     mcd = compute_mcd(clean_all, sigs_method, 48000)
 
@@ -282,9 +282,10 @@ for sw, sigs_method in zip(sws, sigs):
     mean_stoi_est = np.mean(lengths_all * np.array(stoi_est) / np.mean(lengths_all))
     mean_pesq_est = np.mean(lengths_all * np.array(pesq_est) / np.mean(lengths_all))
     mean_sisdr_est = np.mean(lengths_all * np.array(sisdr_est) / np.mean(lengths_all))
+    mean_mos_est = np.mean(lengths_all * np.array(mos) / np.mean(lengths_all))
 
     # mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
-    mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
@@ -295,6 +296,7 @@ for sw, sigs_method in zip(sws, sigs):
     sw.add_scalar('STOI-est.', mean_stoi_est, 0)
     sw.add_scalar('PESQ-est.', mean_pesq_est, 0)
     sw.add_scalar('SI-SDR-est.', mean_sisdr_est, 0)
+    sw.add_scalar('MOS-est', mean_mos_est, 0)
 
 
     for i in val_tensorboard_examples:

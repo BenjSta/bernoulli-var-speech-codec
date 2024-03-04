@@ -9,7 +9,7 @@ import tempfile
 import soundfile
 import torch
 import whisper
-from torchaudio.pipelines import SQUIM_OBJECTIVE
+from torchaudio.pipelines import SQUIM_OBJECTIVE, SQUIM_SUBJECTIVE
 
 def compute_mcd(list_of_refs, list_of_signals, fs):
     mcd_toolbox = Calculate_MCD(MCD_mode="plain")
@@ -45,27 +45,32 @@ def compute_pesq(list_of_refs, list_of_signals, fs):
 
     return np.array(pesqvals)
 
-def compute_estimated_metrics(list_of_signals, fs):
+def compute_estimated_metrics(list_of_refs, list_of_signals, fs):
     # load torchaudio SQUIM
     # https://pytorch.org/audio/main/tutorials/squim_tutorial.html#sphx-glr-tutorials-squim-tutorial-py
-    squim_model = SQUIM_OBJECTIVE.get_model().to('cuda')
+    objective_model = SQUIM_OBJECTIVE.get_model().to('cuda')
+    subjective_model = SQUIM_SUBJECTIVE.get_model().to('cuda')
 
     squim_stoi = []
     squim_pesq = []
     squim_sisdr = []
+    squim_mos = []
     lengths = []
 
-    pbar = tqdm.tqdm(list_of_signals)
+    pbar = tqdm.tqdm(zip(list_of_refs, list_of_signals))
     pbar.set_description("Computing SQUIM...")
 
-    for s in pbar:
-        stoi, pesq, sisdr = squim_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to('cuda')[None, :])
+    for r, s in pbar:
+        stoi, pesq, sisdr = objective_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to('cuda')[None, :])
+        mos = subjective_model(torch.from_numpy(scipy.signal.resample_poly(r / np.max(np.abs(r)), 16000, fs)).to('cuda')[None, :],
+                               torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to('cuda')[None, :])
         squim_stoi.append(stoi[0].cpu().detach().numpy())
         squim_pesq.append(pesq[0].cpu().detach().numpy())
         squim_sisdr.append(sisdr[0].cpu().detach().numpy())
+        squim_mos.append(mos[0].cpu().detach().numpy())
         lengths.append(s.shape[0])
 
-    return (np.array(squim_stoi), np.array(squim_pesq), np.array(squim_sisdr))
+    return (np.array(squim_stoi), np.array(squim_pesq), np.array(squim_sisdr), np.array(squim_mos))
 
 
 def compute_dnsmos(list_of_signals, fs):
