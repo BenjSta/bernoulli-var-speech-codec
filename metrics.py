@@ -9,6 +9,7 @@ import tempfile
 import soundfile
 import torch
 import whisper
+from torchaudio.pipelines import SQUIM_OBJECTIVE
 
 def compute_mcd(list_of_refs, list_of_signals, fs):
     mcd_toolbox = Calculate_MCD(MCD_mode="plain")
@@ -43,6 +44,28 @@ def compute_pesq(list_of_refs, list_of_signals, fs):
         pesqvals.append(pesqval)
 
     return np.array(pesqvals)
+
+def compute_estimated_metrics(list_of_signals, fs):
+    # load torchaudio SQUIM
+    # https://pytorch.org/audio/main/tutorials/squim_tutorial.html#sphx-glr-tutorials-squim-tutorial-py
+    squim_model = SQUIM_OBJECTIVE.get_model().to('cuda')
+
+    squim_stoi = []
+    squim_pesq = []
+    squim_sisdr = []
+    lengths = []
+
+    pbar = tqdm.tqdm(list_of_signals)
+    pbar.set_description("Computing SQUIM...")
+
+    for s in pbar:
+        stoi, pesq, sisdr = squim_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to('cuda')[None, :])
+        squim_stoi.append(stoi[0].cpu().detach().numpy())
+        squim_pesq.append(pesq[0].cpu().detach().numpy())
+        squim_sisdr.append(sisdr[0].cpu().detach().numpy())
+        lengths.append(s.shape[0])
+
+    return (np.array(squim_stoi), np.array(squim_pesq), np.array(squim_sisdr))
 
 
 def compute_dnsmos(list_of_signals, fs):

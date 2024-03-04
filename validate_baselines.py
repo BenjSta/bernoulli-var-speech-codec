@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import tqdm
 import os
 import torch
-from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd
+from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics
 import whisper
 import soundfile
 import time
@@ -262,12 +262,15 @@ for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
         encodec12_all.append(
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
+        # if idx == 9:
+        #     break
 
 
 lengths_all = np.array([y.shape[0] for y in clean_all])
 
 for sw, sigs_method in zip(sws, sigs):
     pesq = compute_pesq(clean_all, sigs_method, 48000)
+    stoi_est, pesq_est, sisdr_est = compute_estimated_metrics(sigs_method, 48000) 
     ovr, sig, bak = compute_dnsmos(sigs_method, 48000)
     mcd = compute_mcd(clean_all, sigs_method, 48000)
 
@@ -276,8 +279,12 @@ for sw, sigs_method in zip(sws, sigs):
     mean_ovr = np.mean(lengths_all * np.array(ovr)) / np.mean(lengths_all)
     mean_bak = np.mean(lengths_all * np.array(bak) / np.mean(lengths_all))
     mean_mcd = np.mean(lengths_all * np.array(mcd)) / np.mean(lengths_all)
+    mean_stoi_est = np.mean(lengths_all * np.array(stoi_est) / np.mean(lengths_all))
+    mean_pesq_est = np.mean(lengths_all * np.array(pesq_est) / np.mean(lengths_all))
+    mean_sisdr_est = np.mean(lengths_all * np.array(sisdr_est) / np.mean(lengths_all))
 
-    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
+    # mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
@@ -285,6 +292,10 @@ for sw, sigs_method in zip(sws, sigs):
     sw.add_scalar('BAK', mean_bak, 0)
     sw.add_scalar('MCD', mean_mcd, 0)
     sw.add_scalar('WAcc', mean_wacc, 0)
+    sw.add_scalar('STOI-est.', mean_stoi_est, 0)
+    sw.add_scalar('PESQ-est.', mean_pesq_est, 0)
+    sw.add_scalar('SI-SDR-est.', mean_sisdr_est, 0)
+
 
     for i in val_tensorboard_examples:
         sw.add_audio(
@@ -293,4 +304,5 @@ for sw, sigs_method in zip(sws, sigs):
             global_step=0,
             sample_rate=48000,
         )
-        sw.flush()
+    sw.flush()
+    sw.close()
