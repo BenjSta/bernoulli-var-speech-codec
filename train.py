@@ -272,8 +272,7 @@ script_bvrnn.train()
 while True:
     continue_next_epoch = True
     pbar = tqdm.tqdm(train_dataloader)
-    for batch in pbar:
-        (y, m) = batch
+    for y in pbar:
         y = y.to(device, non_blocking=True)
         valid_length = y.shape[1] // config["hopsize"] * config["hopsize"]
         y = y[:, :valid_length]
