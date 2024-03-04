@@ -25,8 +25,8 @@ from ptflops import get_model_complexity_info
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,'
 
 model_id = "facebook/encodec_24khz"
-vocoder_config = toml.load("configs_vocoder/causal_tiny_bigvgan.toml")
-vocoder_chkpt_path = "configs_vocoder/g_2500000"
+vocoder_config = toml.load("pretrained_vocoder/config.toml")
+vocoder_chkpt_path = "pretrained_vocoder/g_checkpoint"
 encodec_model = EncodecModel.from_pretrained(model_id)
 encodec_processor = AutoProcessor.from_pretrained(model_id)
 
