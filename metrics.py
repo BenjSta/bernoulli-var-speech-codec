@@ -116,7 +116,21 @@ def compute_mean_wacc(list_of_signals, list_of_texts, fs, device):
 
     return 1 - compute_wer(norm_text(list_of_texts), norm_list_of_transcripts)
 
-def visqol(ref, sig, fs, visqol_base, visqol_executable):
+def compute_visqol(visqol_base, visqol_exe, list_of_refs, list_of_signals, fs):
+    visqol_results = []
+    pbar = tqdm.tqdm(zip(list_of_refs, list_of_signals))
+    pbar.set_description("Computing Visqol...")
+    for r, s in pbar:
+        try:
+            visqol = visqolCore(r, s, fs, visqol_base, visqol_exe)
+        except:
+            pesqval = np.nan
+
+        visqol_results.append(visqol)
+
+    return np.array(visqol_results)
+
+def visqolCore(ref, sig, fs, visqol_base, visqol_executable):
     with tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as reffile, tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as sigfile:
         soundfile.write(
             reffile.name, scipy.signal.resample_poly(ref, 48000, fs), 48000)
@@ -125,7 +139,7 @@ def visqol(ref, sig, fs, visqol_base, visqol_executable):
         cwd = os.getcwd()
         os.chdir(visqol_base)
         retval = subprocess.check_output('%s --reference_file "%s" --degraded_file "%s" --use_speech_mode' % (
-            visqol_executable, reffile.name, sigfile.name), shell=True)
-        
-    return y.astype('float32')
+            visqol_executable, reffile.name, sigfile.name), shell=True, stderr=subprocess.DEVNULL)
+        os.chdir(cwd)
+    return float(retval.decode().split('\t')[-1])
  
