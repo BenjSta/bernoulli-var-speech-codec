@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import tqdm
 import os
 import torch
-from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd
+from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics
 import whisper
 import soundfile
 import time
@@ -25,8 +25,8 @@ from ptflops import get_model_complexity_info
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,'
 
 model_id = "facebook/encodec_24khz"
-vocoder_config = toml.load("configs_vocoder/causal_tiny_bigvgan.toml")
-vocoder_chkpt_path = "configs_vocoder/g_2500000"
+vocoder_config = toml.load("pretrained_vocoder/config.toml")
+vocoder_chkpt_path = "pretrained_vocoder/g_checkpoint"
 encodec_model = EncodecModel.from_pretrained(model_id)
 encodec_processor = AutoProcessor.from_pretrained(model_id)
 
@@ -93,7 +93,7 @@ mel_spec_config = {'n_fft': vocoder_config["winsize"],
                    'fmax': vocoder_config["fmax"],
                    'padding_left': vocoder_config["mel_pad_left"]}
 
-vocoder_config_attr_dict = AttrDict(vocoder_config['vocoder_config'])
+vocoder_config_attr_dict = AttrDict(vocoder_config)
 
 
 # load a vocoder for waveform generation
@@ -223,6 +223,7 @@ sigs = [clean_all, vocoded_all, opus6_all, opus10_all, opus14_all, lyra3_2_all,
         lyra6_all, lyra9_2_all, encodec1_5_all, encodec3_all,
         encodec6_all, encodec12_all]
 
+
 np.random.seed(1)
 for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
     with torch.no_grad():
@@ -233,9 +234,9 @@ for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
         y_mel = mel_spectrogram(torch.from_numpy(y_resampled).to('cuda')[
                                 None, :], **mel_spec_config)
         y_vocoded = generator(y_mel, y_resampled.shape[0])[
-            0, :].detach().cpu().numpy()
+            0, 0, :].detach().cpu().numpy()
         y_vocoded = scipy.signal.resample_poly(
-            y_vocoded.cpu().numpy()[0, :], 48000, vocoder_config['fs'])
+            y_vocoded, 48000, vocoder_config['fs'])
 
         vocoded_all.append(y_vocoded)
 
@@ -261,25 +262,42 @@ for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
         encodec12_all.append(
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
+        # if idx == 9:
+        #     break
 
 
 lengths_all = np.array([y.shape[0] for y in clean_all])
 
 for sw, sigs_method in zip(sws, sigs):
     pesq = compute_pesq(clean_all, sigs_method, 48000)
+    stoi_est, pesq_est, sisdr_est, mos = compute_estimated_metrics(clean_all, sigs_method, 48000) 
     ovr, sig, bak = compute_dnsmos(sigs_method, 48000)
     mcd = compute_mcd(clean_all, sigs_method, 48000)
 
     mean_pesq = np.mean(lengths_all * np.array(pesq)) / np.mean(lengths_all)
     mean_sig = np.mean(lengths_all * np.array(sig)) / np.mean(lengths_all)
+    mean_ovr = np.mean(lengths_all * np.array(ovr)) / np.mean(lengths_all)
+    mean_bak = np.mean(lengths_all * np.array(bak) / np.mean(lengths_all))
     mean_mcd = np.mean(lengths_all * np.array(mcd)) / np.mean(lengths_all)
+    mean_stoi_est = np.mean(lengths_all * np.array(stoi_est) / np.mean(lengths_all))
+    mean_pesq_est = np.mean(lengths_all * np.array(pesq_est) / np.mean(lengths_all))
+    mean_sisdr_est = np.mean(lengths_all * np.array(sisdr_est) / np.mean(lengths_all))
+    mean_mos_est = np.mean(lengths_all * np.array(mos) / np.mean(lengths_all))
 
+    # mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
     mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
+    sw.add_scalar('OVR', mean_ovr, 0)
+    sw.add_scalar('BAK', mean_bak, 0)
     sw.add_scalar('MCD', mean_mcd, 0)
     sw.add_scalar('WAcc', mean_wacc, 0)
+    sw.add_scalar('STOI-est.', mean_stoi_est, 0)
+    sw.add_scalar('PESQ-est.', mean_pesq_est, 0)
+    sw.add_scalar('SI-SDR-est.', mean_sisdr_est, 0)
+    sw.add_scalar('MOS-est', mean_mos_est, 0)
+
 
     for i in val_tensorboard_examples:
         sw.add_audio(
@@ -288,3 +306,5 @@ for sw, sigs_method in zip(sws, sigs):
             global_step=0,
             sample_rate=48000,
         )
+    sw.flush()
+    sw.close()
