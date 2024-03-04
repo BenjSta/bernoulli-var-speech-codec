@@ -4,6 +4,10 @@
 **/.DS_Store
 **/._.DS_Store
 
+# vocoder model
+./pretrained_vocoder/g_checkpoint
+./pretrained_vocoder/d_checkpoint
+
 *.pyc
 *.out
 .vscode/launch.json
