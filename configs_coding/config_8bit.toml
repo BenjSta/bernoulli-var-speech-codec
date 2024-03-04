@@ -1,0 +1,58 @@
+train_name = "8bit_fixed"
+
+adam_b1= 0.9
+adam_b2= 0.999
+batch_size=64
+
+
+validate_only = false
+
+val_interval = 10000
+distinct_chkpt_interval = 10000
+max_steps = 500000
+
+num_workers = 4
+
+lr_decay= 0.99999539484
+
+num_mels=80
+fmin=0
+fmax=8000
+mel_pad_left=-1
+
+h_dim = 900
+z_dim = 8
+log_sigma_init = -1.0
+
+teacher_force_step_1perc = 50000
+resume = false
+
+fs = 22050
+winsize = 1024
+hopsize = 256
+train_seq_duration = 4.0
+vocoder_config.resblock="1"
+learning_rate= 0.0002
+
+vocoder_checkpoint = "./pretrained_vocoder/g_checkpoint"
+
+vocoder_config.num_mels=80
+
+vocoder_config.pre_sym = false
+vocoder_config.upsample_rates= [8,8,2,2]
+vocoder_config.upsample_kernel_sizes= [16,16,4,4]
+vocoder_config.upsample_initial_channel= 128
+vocoder_config.resblock_kernel_sizes= [3,7,11]
+vocoder_config.resblock_dilation_sizes= [[1,3,5], [1,3,5], [1,3,5]]
+vocoder_config.layers_sym = [false, false, false, false]
+vocoder_config.layers_antialias = [false, false, false, false]
+vocoder_config.antialias_post= false
+vocoder_config.post_sym = false
+
+vocoder_config.activation= "snakebeta"
+vocoder_config.snake_logscale= true
+
+vocoder_config.resolutions=[[1024, 120, 600], [2048, 240, 1200], [512, 50, 240]]
+vocoder_config.mpd_reshapes=[2, 3, 5, 7, 11]
+vocoder_config.use_spectral_norm= false
+vocoder_config.discriminator_channel_mult= 1
