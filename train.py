@@ -261,8 +261,7 @@ def validate(step):
     mean_mos_est = np.mean(lengths_all * np.array(mos) / np.mean(lengths_all))
     mean_visqol = np.mean(lengths_all * np.array(visqol) / np.mean(lengths_all))
 
-    mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
-    # mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
