@@ -16,10 +16,17 @@ import time
 import tempfile
 import subprocess
 from transformers import AutoProcessor, EncodecModel
+from third_party.BigVGAN.models import BigVGAN
+from third_party.BigVGAN.utils import load_checkpoint
+from third_party.BigVGAN.env import AttrDict
+from third_party.BigVGAN.meldataset import mel_spectrogram
+from ptflops import get_model_complexity_info
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1,'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,'
 
 model_id = "facebook/encodec_24khz"
+vocoder_config = toml.load("configs_vocoder/causal_tiny_bigvgan.toml")
+vocoder_chkpt_path = "configs_vocoder/g_2500000"
 encodec_model = EncodecModel.from_pretrained(model_id)
 encodec_processor = AutoProcessor.from_pretrained(model_id)
 
@@ -77,6 +84,48 @@ val_dataloader = DataLoader(
 )
 
 
+mel_spec_config = {'n_fft': vocoder_config["winsize"],
+                   'num_mels': vocoder_config["num_mels"],
+                   'sampling_rate': vocoder_config["fs"],
+                   'hop_size': vocoder_config["hopsize"],
+                   'win_size': vocoder_config["winsize"],
+                   'fmin': vocoder_config["fmin"],
+                   'fmax': vocoder_config["fmax"],
+                   'padding_left': vocoder_config["mel_pad_left"]}
+
+vocoder_config_attr_dict = AttrDict(vocoder_config['vocoder_config'])
+
+
+# load a vocoder for waveform generation
+generator = BigVGAN(vocoder_config_attr_dict).to('cuda')
+print("Generator params: {}".format(sum(p.numel()
+      for p in generator.parameters())))
+
+state_dict_g = load_checkpoint(vocoder_chkpt_path, 'cuda')
+generator.load_state_dict(state_dict_g["generator"])
+generator.eval()
+print(generator)
+
+
+def constr(input_res):
+    return {
+        "x": torch.ones((1, 80, input_res[0])).to('cuda'),
+        "length": 1 * vocoder_config["fs"],
+    }
+
+
+macs, params = get_model_complexity_info(
+    generator,
+    (1 * 82,),
+    input_constructor=constr,
+    as_strings=False,
+    print_per_layer_stat=True,
+    verbose=True,
+)
+print("Computational complexity of vocoder model: %g" % macs)
+print("Number of parameters in vocoder model: %g" % params)
+
+
 def opus(y, fs, bitrate=6):
     with tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as tmpfile1, tempfile.NamedTemporaryFile(suffix='.opus', mode='r+') as tmpfile2:
         soundfile.write('%s' % tmpfile1.name, y, fs)
@@ -105,7 +154,7 @@ def lyra(y, fs, bitrate=6):
                         (executables['lyra_decoder'], tmpdir, os.path.split(tmpfile.name)[-1][:-len('.wav')], tmpdir, bitrate), shell=True, stdout=subprocess.DEVNULL,
                         stderr=subprocess.STDOUT)
         y, fs_decoded = soundfile.read(os.path.join(tmpdir,
-                                           os.path.split(tmpfile.name)[-1][:-len('.wav')]+'_decoded.wav'))
+                                                    os.path.split(tmpfile.name)[-1][:-len('.wav')]+'_decoded.wav'))
         y = scipy.signal.resample_poly(y, fs, fs_decoded)
         os.chdir(cwd)
     return y.astype('float32')
@@ -122,6 +171,9 @@ def encodec(y, fs, bandwidth):
 
 sw_clean = SummaryWriter(os.path.join(
     chkpt_log_dirs['chkpt_log_dir'], "clean"))
+
+sw_vocoded = SummaryWriter(os.path.join(
+    chkpt_log_dirs['chkpt_log_dir'], "vocoder_causal"))
 
 sw_opus6 = SummaryWriter(os.path.join(
     chkpt_log_dirs['chkpt_log_dir'], "opus_6k"))
@@ -146,11 +198,10 @@ sw_encodec6 = SummaryWriter(os.path.join(
 sw_encodec12 = SummaryWriter(os.path.join(
     chkpt_log_dirs['chkpt_log_dir'], "encodec12k"))
 
-sws = [sw_clean, sw_opus6, sw_opus10, sw_opus14, sw_lyra3_2, sw_lyra6,
-       sw_lyra9_2, sw_encodec1_5, sw_encodec3, sw_encodec6, sw_encodec12]
-
 
 clean_all = []
+
+vocoded_all = []
 
 opus6_all = []
 opus10_all = []
@@ -165,7 +216,10 @@ encodec3_all = []
 encodec6_all = []
 encodec12_all = []
 
-sigs = [clean_all, opus6_all, opus10_all, opus14_all, lyra3_2_all,
+sws = [sw_clean, sw_vocoded, sw_opus6, sw_opus10, sw_opus14, sw_lyra3_2, sw_lyra6,
+       sw_lyra9_2, sw_encodec1_5, sw_encodec3, sw_encodec6, sw_encodec12]
+
+sigs = [clean_all, vocoded_all, opus6_all, opus10_all, opus14_all, lyra3_2_all,
         lyra6_all, lyra9_2_all, encodec1_5_all, encodec3_all,
         encodec6_all, encodec12_all]
 
@@ -174,18 +228,39 @@ for (y,) in tqdm.tqdm(val_dataloader):
     with torch.no_grad():
         clean_all.append(y[0, :].numpy())
 
-        opus6_all.append(10**(-10/20)*opus(10**(10/20)*y[0, :].numpy(), 48000, 6))
-        opus10_all.append(10**(-10/20)*opus(10**(10/20)*y[0, :].numpy(), 48000, 10))
-        opus14_all.append(10**(-10/20)*opus(10**(10/20)*y[0, :].numpy(), 48000, 14))
+        y_resampled = scipy.signal.resample_poly(
+            y.cpu().numpy()[0, :], vocoder_config['fs'], 48000)
+        y_mel = mel_spectrogram(torch.from_numpy(y_resampled).to('cuda')[
+                                None, :], **mel_spec_config)
+        y_vocoded = generator(y_mel, y_resampled.shape[0])[
+            0, :].detach().cpu().numpy()
+        y_vocoded = scipy.signal.resample_poly(
+            y_vocoded.cpu().numpy()[0, :], 48000, vocoder_config['fs'])
 
-        lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)*y[0, :].numpy(), 48000, 3200))
-        lyra6_all.append(10**(-10/20)*lyra(10**(10/20)*y[0, :].numpy(), 48000, 6000))
-        lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)*y[0, :].numpy(), 48000, 9200))
+        vocoded_all.append(y_vocoded)
 
-        encodec1_5_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
-        encodec3_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
-        encodec6_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
-        encodec12_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
+        opus6_all.append(10**(-10/20)*opus(10**(10/20)
+                         * y[0, :].numpy(), 48000, 6))
+        opus10_all.append(10**(-10/20)*opus(10**(10/20)
+                          * y[0, :].numpy(), 48000, 10))
+        opus14_all.append(10**(-10/20)*opus(10**(10/20)
+                          * y[0, :].numpy(), 48000, 14))
+
+        lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)
+                           * y[0, :].numpy(), 48000, 3200))
+        lyra6_all.append(10**(-10/20)*lyra(10**(10/20)
+                         * y[0, :].numpy(), 48000, 6000))
+        lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)
+                           * y[0, :].numpy(), 48000, 9200))
+
+        encodec1_5_all.append(
+            10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
+        encodec3_all.append(
+            10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
+        encodec6_all.append(
+            10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
+        encodec12_all.append(
+            10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
 
 
 lengths_all = np.array([y.shape[0] for y in clean_all])
