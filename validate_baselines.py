@@ -17,7 +17,7 @@ import tempfile
 import subprocess
 from transformers import AutoProcessor, EncodecModel
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1,'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,'
 
 model_id = "facebook/encodec_24khz"
 encodec_model = EncodecModel.from_pretrained(model_id)
@@ -170,7 +170,7 @@ sigs = [clean_all, opus6_all, opus10_all, opus14_all, lyra3_2_all,
         encodec6_all, encodec12_all]
 
 np.random.seed(1)
-for (y,) in tqdm.tqdm(val_dataloader):
+for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
     with torch.no_grad():
         clean_all.append(y[0, :].numpy())
 
@@ -199,7 +199,7 @@ for sw, sigs_method in zip(sws, sigs):
     mean_sig = np.mean(lengths_all * np.array(sig)) / np.mean(lengths_all)
     mean_mcd = np.mean(lengths_all * np.array(mcd)) / np.mean(lengths_all)
 
-    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, asr_model)
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
