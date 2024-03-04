@@ -9,6 +9,8 @@ import tempfile
 import soundfile
 import torch
 import whisper
+import os
+import subprocess
 
 def compute_mcd(list_of_refs, list_of_signals, fs):
     mcd_toolbox = Calculate_MCD(MCD_mode="plain")
@@ -85,4 +87,17 @@ def compute_mean_wacc(list_of_signals, list_of_texts, fs, device):
     norm_list_of_transcripts = [' ' if i =='' else i for i in norm_text(list_of_transcripts)]
 
     return 1 - compute_wer(norm_text(list_of_texts), norm_list_of_transcripts)
+
+def visqol(ref, sig, fs, visqol_base, visqol_executable):
+    with tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as reffile, tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as sigfile:
+        soundfile.write(
+            reffile.name, scipy.signal.resample_poly(ref, 48000, fs), 48000)
+        soundfile.write(
+            sigfile.name, scipy.signal.resample_poly(sig, 48000, fs), 48000)
+        cwd = os.getcwd()
+        os.chdir(visqol_base)
+        retval = subprocess.check_output('%s --reference_file "%s" --degraded_file "%s" --use_speech_mode' % (
+            visqol_executable, reffile.name, sigfile.name), shell=True)
+        
+    return y.astype('float32')
  
