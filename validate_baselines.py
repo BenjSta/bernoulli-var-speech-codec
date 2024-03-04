@@ -93,7 +93,7 @@ mel_spec_config = {'n_fft': vocoder_config["winsize"],
                    'fmax': vocoder_config["fmax"],
                    'padding_left': vocoder_config["mel_pad_left"]}
 
-vocoder_config_attr_dict = AttrDict(vocoder_config['vocoder_config'])
+vocoder_config_attr_dict = AttrDict(vocoder_config)
 
 
 # load a vocoder for waveform generation
@@ -223,6 +223,7 @@ sigs = [clean_all, vocoded_all, opus6_all, opus10_all, opus14_all, lyra3_2_all,
         lyra6_all, lyra9_2_all, encodec1_5_all, encodec3_all,
         encodec6_all, encodec12_all]
 
+
 np.random.seed(1)
 for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
     with torch.no_grad():
@@ -233,9 +234,9 @@ for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
         y_mel = mel_spectrogram(torch.from_numpy(y_resampled).to('cuda')[
                                 None, :], **mel_spec_config)
         y_vocoded = generator(y_mel, y_resampled.shape[0])[
-            0, :].detach().cpu().numpy()
+            0, 0, :].detach().cpu().numpy()
         y_vocoded = scipy.signal.resample_poly(
-            y_vocoded.cpu().numpy()[0, :], 48000, vocoder_config['fs'])
+            y_vocoded, 48000, vocoder_config['fs'])
 
         vocoded_all.append(y_vocoded)
 
@@ -272,12 +273,16 @@ for sw, sigs_method in zip(sws, sigs):
 
     mean_pesq = np.mean(lengths_all * np.array(pesq)) / np.mean(lengths_all)
     mean_sig = np.mean(lengths_all * np.array(sig)) / np.mean(lengths_all)
+    mean_ovr = np.mean(lengths_all * np.array(ovr)) / np.mean(lengths_all)
+    mean_bak = np.mean(lengths_all * np.array(bak) / np.mean(lengths_all))
     mean_mcd = np.mean(lengths_all * np.array(mcd)) / np.mean(lengths_all)
 
     mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
+    sw.add_scalar('OVR', mean_ovr, 0)
+    sw.add_scalar('BAK', mean_bak, 0)
     sw.add_scalar('MCD', mean_mcd, 0)
     sw.add_scalar('WAcc', mean_wacc, 0)
 
@@ -288,3 +293,4 @@ for sw, sigs_method in zip(sws, sigs):
             global_step=0,
             sample_rate=48000,
         )
+        sw.flush()
