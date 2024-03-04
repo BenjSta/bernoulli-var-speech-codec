@@ -14,6 +14,7 @@ from ptflops import get_model_complexity_info
 import torch
 from third_party.BigVGAN.meldataset import mel_spectrogram
 from collections import OrderedDict
+from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics, compute_visqol
 
 from third_party.BigVGAN.models import (
     BigVGAN
@@ -21,16 +22,14 @@ from third_party.BigVGAN.models import (
 
 from third_party.BigVGAN.utils import load_checkpoint
 from bvrnn import BVRNN
-from dataset import NoisySpeechDataset, load_paths
+from dataset import SpeechDataset, load_paths
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
-vocoder_chkpt_path = "configs_vocoder/g_2500000"
-
 # LOAD CONFIG
-config = toml.load("configs_coding/config_vrnn_1600_lr_sched_elu.toml")
+config = toml.load("configs_coding/config_16bit.toml")
 vocoder_config_attr_dict = AttrDict(config['vocoder_config'])
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
@@ -74,23 +73,23 @@ np.random.seed()
 trainset = SpeechDataset(
     clean_train,
     duration=config["train_seq_duration"],
-    fs=config["train_seq_duration"],
+    fs=config["fs"],
 )
 
-mel_spec_config = (config["winsize"],
-                   config["num_mels"],
-                   config["fs"],
-                   config["hopsize"],
-                   config["winsize"],
-                   config["fmin"],
-                   config["fmax"],
-                   config["mel_pad_left"])
+mel_spec_config = {'n_fft': config["winsize"],
+                   'num_mels': config["num_mels"],
+                   'sampling_rate': config["fs"],
+                   'hop_size': config["hopsize"],
+                   'win_size': config["winsize"],
+                   'fmin': config["fmin"],
+                   'fmax': config["fmax"],
+                   'padding_left': config["mel_pad_left"]}
 
 np.random.seed(1)
 scaler_mel_y = StandardScaler()
 for i in tqdm.tqdm(np.random.choice(len(clean_train), 600, replace=False)):
-    y = trainset.__getitem__(i)
-    s_mel_spectrogram = mel_spectrogram(y[None, :], *mel_spec_config)
+    y = trainset.__getitem__(i)[0]
+    s_mel_spectrogram = mel_spectrogram(torch.from_numpy(y[None, :]), **mel_spec_config)
     scaler_mel_y.partial_fit(s_mel_spectrogram[0, ...].T)
 np.random.seed()
 
@@ -125,8 +124,8 @@ generator.load_state_dict(state_dict_g["generator"])
 generator.eval()
 print(generator)
 
-bvrnn = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"], config['rnn_dim'],
-            scaler_mel_y.mean_, np.sqrt(scaler_mel_y.var_), config["log_sigma_init"], config['activation']).to(device)
+bvrnn = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"],
+            [scaler_mel_y.mean_, np.sqrt(scaler_mel_y.var_)], config["log_sigma_init"]).to('cuda')
 script_bvrnn = torch.jit.script(bvrnn)
 
 chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], config["train_name"], 'checkpoints')
@@ -157,7 +156,7 @@ def constr(input_res):
     }
 macs, params = get_model_complexity_info(
     generator,
-    (1 * 82,),
+    (1 * 86,),
     input_constructor=constr,
     as_strings=False,
     print_per_layer_stat=True,
@@ -169,11 +168,11 @@ print("Number of parameters in vocoder model: %g" % params)
 def constr(input_res):
     return {
         "y": torch.ones((1, input_res[0], 80)).to(device),
-        "p_use_gen": 1.0, "detach_gen": False
+        "p_use_gen": 1.0, "greedy": True
     }
 macs, params = get_model_complexity_info(
     bvrnn,
-    (1 * 82,),
+    (1 * 86,),
     input_constructor=constr,
     as_strings=False,
     print_per_layer_stat=True,
@@ -212,7 +211,8 @@ def validate(step):
 
     for batch in tqdm.tqdm(val_dataloader):
         with torch.no_grad():
-            (y,_) = batch
+            y = batch[0]
+            y_all.append(y[0, :].detach().cpu().numpy())
             y = torch.from_numpy(
                 scipy.signal.resample_poly(
                     y.detach().cpu().numpy(), config["fs"], 48000, axis=1
@@ -222,8 +222,8 @@ def validate(step):
             valid_length = y.shape[1] // config["hopsize"] * config["hopsize"]
             y = y[:, :valid_length]
 
-            y_mel = mel_spectrogram(y, *mel_spec_config)
-            y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, False)
+            y_mel = mel_spectrogram(y, **mel_spec_config)
+            y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True)
             y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
             mae = torch.mean(torch.abs(y_mel - y_mel_reconst))
 
@@ -235,14 +235,46 @@ def validate(step):
             kld_all.append((kld).detach().cpu().numpy())
             y_g_hat = generator(y_mel_reconst, y.shape[1])
             
-            reconst_all.append(y_g_hat[0, 0, :].detach().cpu().numpy())
-            y_all.append(y[0, :].detach().cpu().numpy())
+            reconst_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs'])) 
 
+    clean_all = y_all
+    sigs_method = reconst_all 
     lengths_all = np.array([y.shape[0] for y in y_all])
+
+    pesq = compute_pesq(clean_all, sigs_method, 48000)
+    stoi_est, pesq_est, sisdr_est, mos = compute_estimated_metrics(clean_all, sigs_method, 48000) 
+    ovr, sig, bak = compute_dnsmos(sigs_method, 48000)            
+    mcd = compute_mcd(clean_all, sigs_method, 48000)
+    visqol = compute_visqol( executables['visqol_base'],  executables['visqol_bin'], clean_all, sigs_method, 48000)
+
     mean_elbo = np.mean(lengths_all * np.array(elbo_all)) / np.mean(lengths_all)
     mean_kld = np.mean(lengths_all * np.array(kld_all)) / np.mean(lengths_all)
     mean_nll = np.mean(lengths_all * np.array(nll_all)) / np.mean(lengths_all)
+    mean_pesq = np.mean(lengths_all * np.array(pesq)) / np.mean(lengths_all)
+    mean_sig = np.mean(lengths_all * np.array(sig)) / np.mean(lengths_all)
+    mean_ovr = np.mean(lengths_all * np.array(ovr)) / np.mean(lengths_all)
+    mean_bak = np.mean(lengths_all * np.array(bak) / np.mean(lengths_all))
+    mean_mcd = np.mean(lengths_all * np.array(mcd)) / np.mean(lengths_all)
+    mean_stoi_est = np.mean(lengths_all * np.array(stoi_est) / np.mean(lengths_all))
+    mean_pesq_est = np.mean(lengths_all * np.array(pesq_est) / np.mean(lengths_all))
+    mean_sisdr_est = np.mean(lengths_all * np.array(sisdr_est) / np.mean(lengths_all))
+    mean_mos_est = np.mean(lengths_all * np.array(mos) / np.mean(lengths_all))
+    mean_visqol = np.mean(lengths_all * np.array(visqol) / np.mean(lengths_all))
 
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
+    # mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
+
+    sw.add_scalar('PESQ', mean_pesq, 0)
+    sw.add_scalar('SIG', mean_sig, 0)
+    sw.add_scalar('OVR', mean_ovr, 0)
+    sw.add_scalar('BAK', mean_bak, 0)
+    sw.add_scalar('MCD', mean_mcd, 0)
+    sw.add_scalar('WAcc', mean_wacc, 0)
+    sw.add_scalar('STOI-est.', mean_stoi_est, 0)
+    sw.add_scalar('PESQ-est.', mean_pesq_est, 0)
+    sw.add_scalar('SI-SDR-est.', mean_sisdr_est, 0)
+    sw.add_scalar('MOS-est', mean_mos_est, 0)
+    sw.add_scalar('Visqol', mean_visqol, 0)
     sw.add_scalar("KLD", mean_kld, step)
     sw.add_scalar("NLL", mean_nll, step)
     sw.add_scalar("ELBO", mean_elbo, step)
@@ -253,9 +285,10 @@ def validate(step):
             "%d" % i,
             torch.from_numpy(reconst_all[i]),
             global_step=step,
-            sample_rate=config["fs"],
+            sample_rate=48000,
         )
-
+    sw.flush()
+    sw.close()
     bvrnn.train()
     script_bvrnn.train()
     np.random.seed()
@@ -269,16 +302,18 @@ if config["validate_only"]:
 bvrnn.train()
 script_bvrnn.train()
 
+
 while True:
     continue_next_epoch = True
     pbar = tqdm.tqdm(train_dataloader)
-    for y in pbar:
+    for batch in pbar:
+        y = batch[0]
         y = y.to(device, non_blocking=True)
         valid_length = y.shape[1] // config["hopsize"] * config["hopsize"]
         y = y[:, :valid_length]
 
         optim.zero_grad()
-        y_mel = mel_spectrogram(y, *mel_spec_config)
+        y_mel = mel_spectrogram(y, **mel_spec_config)
         p_use_gen = 1.0-(0.01**(steps/config['teacher_force_step_1perc']))
         if steps > config['teacher_force_step_1perc']:
             p_use_gen = 1.0
