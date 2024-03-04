@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import tqdm
 import os
 import torch
-from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics
+from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics, compute_visqol
 import whisper
 import soundfile
 import time
@@ -262,8 +262,8 @@ for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
         encodec12_all.append(
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
-        # if idx == 9:
-        #     break
+        if idx == 9:
+            break
 
 
 lengths_all = np.array([y.shape[0] for y in clean_all])
@@ -273,6 +273,7 @@ for sw, sigs_method in zip(sws, sigs):
     stoi_est, pesq_est, sisdr_est, mos = compute_estimated_metrics(clean_all, sigs_method, 48000) 
     ovr, sig, bak = compute_dnsmos(sigs_method, 48000)
     mcd = compute_mcd(clean_all, sigs_method, 48000)
+    visqol = compute_visqol( executables['visqol_base'],  executables['visqol_bin'], clean_all, sigs_method, 48000)
 
     mean_pesq = np.mean(lengths_all * np.array(pesq)) / np.mean(lengths_all)
     mean_sig = np.mean(lengths_all * np.array(sig)) / np.mean(lengths_all)
@@ -283,9 +284,10 @@ for sw, sigs_method in zip(sws, sigs):
     mean_pesq_est = np.mean(lengths_all * np.array(pesq_est) / np.mean(lengths_all))
     mean_sisdr_est = np.mean(lengths_all * np.array(sisdr_est) / np.mean(lengths_all))
     mean_mos_est = np.mean(lengths_all * np.array(mos) / np.mean(lengths_all))
+    mean_visqol = np.mean(lengths_all * np.array(visqol) / np.mean(lengths_all))
 
-    # mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
-    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
+    # mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
@@ -297,14 +299,15 @@ for sw, sigs_method in zip(sws, sigs):
     sw.add_scalar('PESQ-est.', mean_pesq_est, 0)
     sw.add_scalar('SI-SDR-est.', mean_sisdr_est, 0)
     sw.add_scalar('MOS-est', mean_mos_est, 0)
+    sw.add_scalar('Visqol', mean_visqol, 0)
 
 
-    for i in val_tensorboard_examples:
-        sw.add_audio(
-            "%d" % i,
-            torch.from_numpy(sigs_method[i]),
-            global_step=0,
-            sample_rate=48000,
-        )
+    # for i in val_tensorboard_examples:
+    #     sw.add_audio(
+    #         "%d" % i,
+    #         torch.from_numpy(sigs_method[i]),
+    #         global_step=0,
+    #         sample_rate=48000,
+    #     )
     sw.flush()
     sw.close()
