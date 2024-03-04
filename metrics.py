@@ -7,6 +7,8 @@ import tqdm
 from pymcd.mcd import Calculate_MCD
 import tempfile
 import soundfile
+import torch
+import whisper
 
 def compute_mcd(list_of_refs, list_of_signals, fs):
     mcd_toolbox = Calculate_MCD(MCD_mode="plain")
@@ -66,9 +68,11 @@ def compute_dnsmos(list_of_signals, fs):
     return (np.array(dnsmos_ovrl), np.array(dnsmos_sig), np.array(dnsmos_bak))
 
 
-def compute_mean_wacc(list_of_signals, list_of_texts, fs, asr_model):
+def compute_mean_wacc(list_of_signals, list_of_texts, fs, device):
     list_of_transcripts = []
-
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    asr_model = whisper.load_model("medium.en", device = device)
     pbar = tqdm.tqdm(list_of_signals)
     pbar.set_description("Computing Wacc...")
 
@@ -78,5 +82,7 @@ def compute_mean_wacc(list_of_signals, list_of_texts, fs, asr_model):
                 scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)
             )["text"]
         )
+    norm_list_of_transcripts = [' ' if i =='' else i for i in norm_text(list_of_transcripts)]
 
-    return 1 - compute_wer(norm_text(list_of_texts), norm_text(list_of_transcripts).replace('', ' '))
+    return 1 - compute_wer(norm_text(list_of_texts), norm_list_of_transcripts)
+ 
