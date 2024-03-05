@@ -1,10 +1,10 @@
 import torch
 from torch import nn
-from torch import Tensor
+from torch import Tensor, LongTensor
 from typing import Tuple
 
 class BVRNN(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, mean_std_mel, log_sigma_init):
+    def __init__(self, x_dim, h_dim, z_dim, mean_std_mel, log_sigma_init, variableBit = False):
         super(BVRNN, self).__init__()
   
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -17,6 +17,11 @@ class BVRNN(nn.Module):
         self.x_dim = x_dim
         self.h_dim = h_dim
         self.z_dim = z_dim
+        self.varBit = variableBit
+        if variableBit:
+            var_dim = z_dim
+        else :
+            var_dim = 0
 
         #feature-extracting transformations
         self.phi_x = nn.Sequential(
@@ -28,7 +33,7 @@ class BVRNN(nn.Module):
             nn.ELU())
         
         self.phi_z = nn.Sequential(
-            nn.Linear(z_dim, h_dim),
+            nn.Linear(z_dim + var_dim, h_dim),
             nn.ELU(),
             nn.Linear(h_dim, h_dim),
             nn.ELU(),
@@ -37,7 +42,7 @@ class BVRNN(nn.Module):
         
         #encoder
         self.enc = nn.Sequential(
-            nn.Linear(h_dim + h_dim, h_dim),
+            nn.Linear(h_dim + h_dim + var_dim, h_dim),
             nn.ELU(),
             nn.Linear(h_dim, h_dim),
             nn.ELU(),
@@ -62,10 +67,7 @@ class BVRNN(nn.Module):
         self.rnn = nn.GRU(2*h_dim, h_dim, num_layers=1, batch_first=True)
 
 
-
-
-
-    def forward(self, y: Tensor, p_use_gen: float, greedy: bool)->Tuple[Tensor, Tensor]:
+    def forward(self, y: Tensor, p_use_gen: float, greedy: bool, varBitrate: LongTensor)->Tuple[Tensor, Tensor]:
         
         y = (y - self.mean_mel[None, None, :]) / self.std_mel[None, None, :]
 
@@ -76,10 +78,21 @@ class BVRNN(nn.Module):
 
         h = torch.zeros(1, y.size(0), self.h_dim, device=self.device)
         h2 = torch.zeros(1, y.size(0), self.h_dim, device=self.device)
+        if self.varBit:
+            bit_cond = torch.nn.functional.one_hot(varBitrate, num_classes=self.z_dim)
+            bit_cond_helper = torch.arange(0, self.z_dim, 1).to(y.device)
+            bit_mask = varBitrate[:,:,None] < bit_cond_helper[None,None,:]
+        else:
+            bit_cond = None
+            bit_cond_helper = None
+            bit_mask = None
 
         for t in range(y.size(1)):
             random_num = torch.rand([])
-            phi_x_t = phi_x[:, t, :]
+            if self.varBit:
+                phi_x_t = torch.cat((phi_x[:, t, :], bit_cond[:,t,:]), dim=-1)
+            else:
+                phi_x_t = phi_x[:, t, :]
 
             if random_num < p_use_gen:
                 enc_t = self.enc(torch.cat([phi_x_t, h2[-1, :, :]], 1))
@@ -93,7 +106,15 @@ class BVRNN(nn.Module):
                 z_t = torch.round(enc_t.detach()) - enc_t.detach() + enc_t
             else:
                 z_t = torch.round(torch.rand_like(enc_t).to(enc_t.device) - 0.5 + enc_t.detach()) - enc_t.detach() + enc_t
-            phi_z_t = self.phi_z(z_t)
+
+            #variable bitrate
+            if self.varBit:
+                z_t[torch.logical_not(bit_mask)] = 0.5
+                z_t_var = torch.cat((z_t, bit_cond[:,t,:]), dim=-1)
+                phi_z_t = self.phi_z(z_t_var)
+            else:
+                phi_z_t = self.phi_z(z_t)
+            
             
             if random_num < p_use_gen:
                 dec_t = self.dec(torch.cat([phi_z_t, h2[-1, :, :]], 1))

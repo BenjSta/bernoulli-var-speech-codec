@@ -125,7 +125,7 @@ generator.eval()
 print(generator)
 
 bvrnn = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"],
-            [scaler_mel_y.mean_, np.sqrt(scaler_mel_y.var_)], config["log_sigma_init"]).to('cuda')
+            [scaler_mel_y.mean_, np.sqrt(scaler_mel_y.var_)], config["log_sigma_init"], config["var_bit"]).to('cuda')
 script_bvrnn = torch.jit.script(bvrnn)
 
 chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], config["train_name"], 'checkpoints')
@@ -168,7 +168,7 @@ print("Number of parameters in vocoder model: %g" % params)
 def constr(input_res):
     return {
         "y": torch.ones((1, input_res[0], 80)).to(device),
-        "p_use_gen": 1.0, "greedy": True
+        "p_use_gen": 1.0, "greedy": True, "varBitrate": False
     }
 macs, params = get_model_complexity_info(
     bvrnn,
@@ -253,7 +253,7 @@ def validate(step):
     mean_pesq = np.mean(lengths_all * np.array(pesq)) / np.mean(lengths_all)
     mean_sig = np.mean(lengths_all * np.array(sig)) / np.mean(lengths_all)
     mean_ovr = np.mean(lengths_all * np.array(ovr)) / np.mean(lengths_all)
-    mean_bak = np.mean(lengths_all * np.array(bak) / np.mean(lengths_all))
+    mean_bak = np.mean(lengths_all * np.array(bak)) / np.mean(lengths_all)
     mean_mcd = np.mean(lengths_all * np.array(mcd)) / np.mean(lengths_all)
     mean_stoi_est = np.mean(lengths_all * np.array(stoi_est) / np.mean(lengths_all))
     mean_pesq_est = np.mean(lengths_all * np.array(pesq_est) / np.mean(lengths_all))
@@ -305,6 +305,7 @@ script_bvrnn.train()
 while True:
     continue_next_epoch = True
     pbar = tqdm.tqdm(train_dataloader)
+    
     for batch in pbar:
         y = batch[0]
         y = y.to(device, non_blocking=True)
@@ -313,10 +314,25 @@ while True:
 
         optim.zero_grad()
         y_mel = mel_spectrogram(y, **mel_spec_config)
+        varDistribution = torch.empty((y_mel.shape[0],2),device=y_mel.device).uniform(np.log(1),np.log(config['z_dim'] + 1))
+        bitrates = torch.floor(torch.exp(varDistribution))
+        change_index = torch.randint(0, y_mel.shape[2], size=(y_mel.shape[0],)).to(y.device)
+        time_tensor = torch.arange(0, y_mel.shape[2], 1).to(y.device)
+        varBitTens = torch.zeros((y_mel.shape[0], y_mel.shape[2]))
+        for b in y_mel.shape[0]: 
+            p_curr = np.random.rand()
+            if p_curr > config['p_bitratechange']:
+                varBitTens[b,:] = bitrates[b,0].to(y.device)
+            else:
+                varBitTens[b,time_tensor <= change_index[b]] = bitrates[b,0].to(y.device)
+                varBitTens[b,time_tensor > change_index[b]] = bitrates[b,1].to(y.device)
         p_use_gen = 1.0-(0.01**(steps/config['teacher_force_step_1perc']))
         if steps > config['teacher_force_step_1perc']:
             p_use_gen = 1.0
-        y_mel_reconst, kld = script_bvrnn(y_mel.permute(0, 2, 1), p_use_gen, False)
+        if config['var_bit']:
+            y_mel_reconst, kld = script_bvrnn(y_mel.permute(0, 2, 1), p_use_gen, False, varBitTens)
+        else:
+            y_mel_reconst, kld = script_bvrnn(y_mel.permute(0, 2, 1), p_use_gen, False)
         y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
 
         mae = torch.mean(torch.abs(y_mel - y_mel_reconst))

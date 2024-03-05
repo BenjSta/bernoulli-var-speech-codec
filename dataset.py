@@ -108,11 +108,13 @@ class SpeechDataset(data.Dataset):
     def __init__(self,
                  speech_filepath_list,
                  duration,
-                 fs):
+                 fs,
+                 varBit=False):
         
         self.speech_filepath_list = speech_filepath_list
         self.duration = duration
         self.fs = fs
+        self.genVarBit = varBit
 
         self.length = len(speech_filepath_list)
 
