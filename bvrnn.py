@@ -67,7 +67,7 @@ class BVRNN(nn.Module):
         self.rnn = nn.GRU(2*h_dim, h_dim, num_layers=1, batch_first=True)
 
 
-    def forward(self, y: Tensor, p_use_gen: float, greedy: bool, varBitrate: LongTensor)->Tuple[Tensor, Tensor]:
+    def forward(self, y: Tensor, p_use_gen: float, greedy: bool, varBitrate: Tensor)->Tuple[Tensor, Tensor]:
         
         y = (y - self.mean_mel[None, None, :]) / self.std_mel[None, None, :]
 
@@ -79,26 +79,27 @@ class BVRNN(nn.Module):
         h = torch.zeros(1, y.size(0), self.h_dim, device=self.device)
         h2 = torch.zeros(1, y.size(0), self.h_dim, device=self.device)
         if self.varBit:
-            bit_cond = torch.nn.functional.one_hot(varBitrate, num_classes=self.z_dim)
             bit_cond_helper = torch.arange(0, self.z_dim, 1).to(y.device)
-            bit_mask = varBitrate[:,:,None] < bit_cond_helper[None,None,:]
+            bit_cond = ((varBitrate[:,:,None] - 1) == bit_cond_helper).float()
+            bit_mask = varBitrate[:,:,None] > bit_cond_helper[None,None,:]
         else:
-            bit_cond = None
-            bit_cond_helper = None
-            bit_mask = None
+            bit_cond = torch.zeros((0,0,0), device=y.device)
+            bit_cond_helper = torch.zeros((0,0,0), device=y.device)
+            bit_mask = torch.zeros((0,0,0), device=y.device)
 
         for t in range(y.size(1)):
             random_num = torch.rand([])
+            phi_x_t = phi_x[:, t, :]
             if self.varBit:
-                phi_x_t = torch.cat((phi_x[:, t, :], bit_cond[:,t,:]), dim=-1)
+                enc_input = torch.cat((phi_x_t, bit_cond[:,t,:]), dim=-1)
             else:
-                phi_x_t = phi_x[:, t, :]
+                enc_input = phi_x_t
 
             if random_num < p_use_gen:
-                enc_t = self.enc(torch.cat([phi_x_t, h2[-1, :, :]], 1))
+                enc_t = self.enc(torch.cat([enc_input, h2[-1, :, :]], 1))
                 prior_t = self.prior(h2[-1, :, :])
             else:
-                enc_t = self.enc(torch.cat([phi_x_t, h[-1, :, :]], 1))
+                enc_t = self.enc(torch.cat([enc_input, h[-1, :, :]], 1))
                 prior_t = self.prior(h[-1, :, :])
 
             #sampling and reparameterization
@@ -109,7 +110,7 @@ class BVRNN(nn.Module):
 
             #variable bitrate
             if self.varBit:
-                z_t[torch.logical_not(bit_mask)] = 0.5
+                z_t[torch.logical_not(bit_mask[:,t,:])] = 0.5
                 z_t_var = torch.cat((z_t, bit_cond[:,t,:]), dim=-1)
                 phi_z_t = self.phi_z(z_t_var)
             else:
