@@ -29,7 +29,7 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 # LOAD CONFIG
-config = toml.load("configs_coding/config_16bit.toml")
+config = toml.load("configs_coding/config_varBitRate.toml")
 vocoder_config_attr_dict = AttrDict(config['vocoder_config'])
 os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 
@@ -269,14 +269,14 @@ def calcValidation(sw, step, varBit):
     mean_mos_est = np.mean(lengths_all * np.array(mos) / np.mean(lengths_all))
     mean_visqol = np.mean(lengths_all * np.array(visqol) / np.mean(lengths_all))
 
-    # mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, step)
     sw.add_scalar('SIG', mean_sig, step)
     sw.add_scalar('OVR', mean_ovr, step)
     sw.add_scalar('BAK', mean_bak, step)
     sw.add_scalar('MCD', mean_mcd, step)
-    # sw.add_scalar('WAcc', mean_wacc, step)
+    sw.add_scalar('WAcc', mean_wacc, step)
     sw.add_scalar('STOI-est.', mean_stoi_est, step)
     sw.add_scalar('PESQ-est.', mean_pesq_est, step)
     sw.add_scalar('SI-SDR-est.', mean_sisdr_est, step)
