@@ -193,10 +193,10 @@ val_dataloader = DataLoader(
 )
 
 def getBitrate():
-    if np.random.rand() < 1/3:
-        Bitrate = np.floor(np.random.uniform(1,17))
+    if np.random.rand() <0.583:
+        Bitrate = np.floor(np.random.uniform(1,33))
     else: 
-        Bitrate = np.floor(np.exp(np.random.uniform(np.log(17),np.log(65))))
+        Bitrate = np.floor(np.exp(np.random.uniform(np.log(33),np.log(65))))
     return Bitrate
 
 log_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], config['train_name'])
