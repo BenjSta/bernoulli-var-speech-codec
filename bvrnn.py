@@ -33,7 +33,8 @@ class BVRNN(nn.Module):
             nn.ELU())
         
         self.phi_z = nn.Sequential(
-            nn.Linear(z_dim + var_dim, h_dim),
+            # nn.Linear(z_dim + var_dim, h_dim),
+            nn.Linear(z_dim, h_dim),
             nn.ELU(),
             nn.Linear(h_dim, h_dim),
             nn.ELU(),
@@ -90,6 +91,12 @@ class BVRNN(nn.Module):
         for t in range(y.size(1)):
             random_num = torch.rand([])
             phi_x_t = phi_x[:, t, :]
+            # if self.varBit:
+            #      phi_x_t = torch.cat((phi_x[:, t, :], bit_cond[:,t,:]), dim=-1)
+            #      enc_input = torch.cat((phi_x_t, bit_cond[:,t,:]), dim=-1)
+            #  else:
+            #      phi_x_t = phi_x[:, t, :]
+            #      enc_input = phi_x_t
 
             if random_num < p_use_gen:
                 enc_t = self.enc(torch.cat([phi_x_t, h2[-1, :, :]], 1))
@@ -107,9 +114,9 @@ class BVRNN(nn.Module):
             #variable bitrate
             if self.varBit:
                 z_t[torch.logical_not(bit_mask[:,t,:])] = 0.5
-                z_t_var = torch.cat((z_t, bit_cond[:,t,:]), dim=-1)
+                # z_t_var = torch.cat((z_t, bit_cond[:,t,:]), dim=-1)
                 enc_t = enc_t * bit_mask[:,t,:].float() + 0.5 * (1 - bit_mask[:,t,:].float())
-                phi_z_t = self.phi_z(z_t_var)
+                phi_z_t = self.phi_z(z_t)
             else:
                 phi_z_t = self.phi_z(z_t)
             
