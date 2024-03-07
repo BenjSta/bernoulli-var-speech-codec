@@ -295,7 +295,6 @@ def calcValidation(sw, step, varBit):
             sample_rate=48000,
         )
     sw.flush()
-    sw.close()
     bvrnn.train()
     script_bvrnn.train()
     np.random.seed()
