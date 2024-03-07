@@ -42,7 +42,7 @@ class BVRNN(nn.Module):
         
         #encoder
         self.enc = nn.Sequential(
-            nn.Linear(h_dim + h_dim + var_dim, h_dim),
+            nn.Linear(h_dim + h_dim, h_dim),
             nn.ELU(),
             nn.Linear(h_dim, h_dim),
             nn.ELU(),
@@ -90,16 +90,12 @@ class BVRNN(nn.Module):
         for t in range(y.size(1)):
             random_num = torch.rand([])
             phi_x_t = phi_x[:, t, :]
-            if self.varBit:
-                enc_input = torch.cat((phi_x_t, bit_cond[:,t,:]), dim=-1)
-            else:
-                enc_input = phi_x_t
 
             if random_num < p_use_gen:
-                enc_t = self.enc(torch.cat([enc_input, h2[-1, :, :]], 1))
+                enc_t = self.enc(torch.cat([phi_x_t, h2[-1, :, :]], 1))
                 prior_t = self.prior(h2[-1, :, :])
             else:
-                enc_t = self.enc(torch.cat([enc_input, h[-1, :, :]], 1))
+                enc_t = self.enc(torch.cat([phi_x_t, h[-1, :, :]], 1))
                 prior_t = self.prior(h[-1, :, :])
 
             #sampling and reparameterization
