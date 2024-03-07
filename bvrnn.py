@@ -108,6 +108,7 @@ class BVRNN(nn.Module):
             if self.varBit:
                 z_t[torch.logical_not(bit_mask[:,t,:])] = 0.5
                 z_t_var = torch.cat((z_t, bit_cond[:,t,:]), dim=-1)
+                enc_t = enc_t * bit_mask[:,t,:].float() + 0.5 * (1 - bit_mask[:,t,:].float())
                 phi_z_t = self.phi_z(z_t_var)
             else:
                 phi_z_t = self.phi_z(z_t)
