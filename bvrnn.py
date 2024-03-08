@@ -137,8 +137,8 @@ class BVRNN(nn.Module):
                 
 
             #computing losses
-            kld_loss.append(torch.mean(torch.sum(enc_t * (torch.log(enc_t + 1e-4) - torch.log(prior_t + 1e-4)) +
-                            (1-enc_t) * (torch.log((1-enc_t) + 1e-4) - torch.log((1-prior_t) + 1e-4)), -1)))
+            kld_loss.append(torch.mean(torch.sum(enc_t * (torch.log(torch.clip(enc_t, 1e-3)) - torch.log(torch.clip(prior_t, 1e-3))) +
+                            (1-enc_t) * (torch.log(torch.clip((1-enc_t), 1e-3)) - torch.log(torch.clip((1-prior_t), 1e-3))), -1)))
 
             all_dec_mean.append(dec_t)
 
