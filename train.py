@@ -361,20 +361,22 @@ while True:
             1/(torch.exp(bvrnn.log_sigma)) * y_mel_reconst.shape[1] * mae
         elbo = nll + kld
         elbo.backward()
+        n = torch.nn.utils.clip_grad_norm_(script_bvrnn.parameters(), max_norm=config['grad_clip'])
         optim.step()
-        sched.step()
+        if steps < config['scheduler_max_steps']:
+            sched.step()
 
         steps += 1
         # # STDOUT logging
         printstr = (
-            "Steps : %d, KL loss : %g, NLL : %g, ELBO : %g, LR: %g, p: %g, MAE: %g"%
+            "Steps : %d, KL loss : %g, NLL : %g, ELBO : %g, LR: %g, p: %g, MAE: %g, GradNorm: %g"%
             (
                 steps,
                 kld.detach().cpu().numpy(),
                 nll.detach().cpu().numpy(),
                 elbo.detach().cpu().numpy(),
                 sched.get_last_lr()[0],
-                p_use_gen, mae
+                p_use_gen, mae, n
             )
             )
         pbar.set_description(printstr)
