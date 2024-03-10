@@ -111,14 +111,10 @@ class BVRNN(nn.Module):
             else:
                 z_t = torch.round(torch.rand_like(enc_t).to(enc_t.device) - 0.5 + enc_t.detach()) - enc_t.detach() + enc_t
 
-            #variable bitrate
             if self.varBit:
-                z_t[torch.logical_not(bit_mask[:,t,:])] = 0.5
-                # z_t_var = torch.cat((z_t, bit_cond[:,t,:]), dim=-1)
-                enc_t = enc_t * bit_mask[:,t,:].float() + 0.5 * (1 - bit_mask[:,t,:].float())
-                phi_z_t = self.phi_z(z_t)
-            else:
-                phi_z_t = self.phi_z(z_t)
+                z_t = z_t * bit_mask[:,t,:].float() + 0.5 * (1-bit_mask[:,t,:].float())
+                
+            phi_z_t = self.phi_z(z_t)
             
             
             if random_num < p_use_gen:
@@ -135,11 +131,16 @@ class BVRNN(nn.Module):
                 _, h2 = self.rnn(torch.cat([phi_x_t_gen, phi_z_t], 1).unsqueeze(1), h2)
 
                 
-
-            #computing losses
-            kld_loss.append(torch.mean(torch.sum(enc_t * (torch.log(torch.clip(enc_t, 1e-3)) - torch.log(torch.clip(prior_t, 1e-3))) +
-                            (1-enc_t) * (torch.log(torch.clip((1-enc_t), 1e-3)) - torch.log(torch.clip((1-prior_t), 1e-3))), -1)))
-
+            kld_elem = enc_t * (torch.log(torch.clip(enc_t, 1e-3)) - torch.log(torch.clip(prior_t, 1e-3))) + \
+                            (1-enc_t) * (torch.log(torch.clip((1-enc_t), 1e-3)) - torch.log(torch.clip((1-prior_t), 1e-3)))
+            
+            #variable bitrate
+            if self.varBit:
+                #computing losses
+                kld_loss.append(torch.mean(torch.sum(kld_elem * bit_mask[:,t,:].float(), -1)))
+            else:
+                kld_loss.append(torch.mean(torch.sum(kld_elem, -1)))
+            
             all_dec_mean.append(dec_t)
 
         return torch.stack(all_dec_mean).permute(1, 0, 2), torch.mean(torch.stack(kld_loss))
