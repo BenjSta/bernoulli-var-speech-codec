@@ -12,22 +12,24 @@ import whisper
 import os
 import subprocess
 from torchaudio.pipelines import SQUIM_OBJECTIVE, SQUIM_SUBJECTIVE
+from joblib import Parallel, delayed
 
-def compute_mcd(list_of_refs, list_of_signals, fs):
+def mcd_core(ref, sig, fs):
     mcd_toolbox = Calculate_MCD(MCD_mode="plain")
-    mcdvals = []
+    with tempfile.NamedTemporaryFile(suffix='.wav') as reffile, tempfile.NamedTemporaryFile(suffix='.wav') as sigfile:
+        refname = reffile.name
+        signame = sigfile.name
+    
+        soundfile.write(refname, ref, fs)
+        soundfile.write(sigfile, sig, fs)
+
+        mcdval = mcd_toolbox.calculate_mcd(refname, signame)
+    return mcdval
+
+def compute_mcd(list_of_refs, list_of_signals, fs, num_workers = 10):
     pbar = tqdm.tqdm(zip(list_of_refs, list_of_signals))
     pbar.set_description("Computing MCD...")
-    for r, s in pbar:
-        with tempfile.NamedTemporaryFile(suffix='.wav') as reffile, tempfile.NamedTemporaryFile(suffix='.wav') as sigfile:
-            refname = reffile.name
-            signame = sigfile.name
-        
-            soundfile.write(refname, r, fs)
-            soundfile.write(sigfile, s, fs)
-        
-            mcdvals.append(mcd_toolbox.calculate_mcd(refname, signame))
-
+    mcdvals = Parallel(n_jobs=num_workers)(delayed(mcd_core)(r, s, fs) for (r, s) in pbar)
     return np.array(mcdvals)
 
 
@@ -116,26 +118,20 @@ def compute_mean_wacc(list_of_signals, list_of_texts, fs, device):
 
     return 1 - compute_wer(norm_text(list_of_texts), norm_list_of_transcripts)
 
-def compute_visqol(visqol_base, visqol_exe, list_of_refs, list_of_signals, fs):
+def compute_visqol(visqol_base, visqol_exe, list_of_refs, list_of_signals, fs, num_workers = 10):
     visqol_results = []
     pbar = tqdm.tqdm(zip(list_of_refs, list_of_signals))
     pbar.set_description("Computing Visqol...")
-    for r, s in pbar:
-        try:
-            visqol = visqolCore(r, s, fs, visqol_base, visqol_exe)
-        except:
-            pesqval = np.nan
-
-        visqol_results.append(visqol)
-
+    visqol_results = Parallel(n_jobs=num_workers)(delayed(visqolCore)(r, s, fs, visqol_base, visqol_exe) for (r, s) in pbar)
+    
     return np.array(visqol_results)
 
 def visqolCore(ref, sig, fs, visqol_base, visqol_executable):
     with tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as reffile, tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as sigfile:
         soundfile.write(
-            reffile.name, scipy.signal.resample_poly(ref, 48000, fs), 48000)
+            reffile.name, scipy.signal.resample_poly(ref, 16000, fs), 16000)
         soundfile.write(
-            sigfile.name, scipy.signal.resample_poly(sig, 48000, fs), 48000)
+            sigfile.name, scipy.signal.resample_poly(sig, 16000, fs), 16000)
         cwd = os.getcwd()
         os.chdir(visqol_base)
         retval = subprocess.check_output('%s --reference_file "%s" --degraded_file "%s" --use_speech_mode' % (
