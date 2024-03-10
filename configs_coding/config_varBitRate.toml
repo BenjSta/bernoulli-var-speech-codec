@@ -1,4 +1,4 @@
-train_name = "variable_Bitrate"
+train_name = "variable_BitrateKLMask"
 
 adam_b1= 0.9
 adam_b2= 0.999
@@ -13,7 +13,10 @@ max_steps = 200000
 
 num_workers = 8
 
-lr_decay= 0.99998848714
+learning_rate= 0.0002
+lr_decay= 0.99999306855
+scheduler_max_steps = 200000
+grad_clip = 130
 
 num_mels=80
 fmin=0
@@ -34,7 +37,6 @@ winsize = 1024
 hopsize = 256
 train_seq_duration = 4.0
 vocoder_config.resblock="1"
-learning_rate= 0.0002
 
 vocoder_checkpoint = "./pretrained_vocoder/g_checkpoint"
 
