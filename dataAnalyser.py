@@ -3,7 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import scienceplots
 
-plt.style.use('science')
+plt.style.use('default')
+# plt.style.use('science')
 # plt.style.use(['science','grid'])
 
 def calcMedMeanInter(data, metric,):
