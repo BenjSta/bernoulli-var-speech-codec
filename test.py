@@ -69,6 +69,10 @@ np.random.seed(1)
 test_tensorboard_examples = np.random.choice(len(clean_test), 5, replace=False)
 np.random.seed()
 
+np.random.seed(1)
+test_test_examples = np.random.choice(len(clean_test), 40, replace=False)
+np.random.seed()
+
 asr_model = whisper.load_model("medium.en")
 
 test_dataset = SpeechDataset(
@@ -227,76 +231,79 @@ sigs = [clean_all, vocoded_all, varBit_8_all, varBit_12_all, varBit_16_all, varB
 bitrates = [8,12,16,24,32,64]
 wavPath = 'WAV/'
 
+
+
 np.random.seed(1)
 for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
-    with torch.no_grad():
-        clean_all.append(y[0, :].numpy())
-        y_resampled = scipy.signal.resample_poly(y.cpu().numpy()[0, :], vocoder_config['fs'], 48000)
-        # y_resampled = y_resaampled * 0.95 / np.max(np.abs(y_resampled))
-        y_mel = mel_spectrogram(torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config)
-        # y_mel_schlange = mel_spectrogram(....)
-        # y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
-        # y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
-        # y_g_hat = generator(y_mel_reconst, y.shape[1])
+    if idx in test_test_examples:
+        with torch.no_grad():
+            clean_all.append(y[0, :].numpy())
+            y_resampled = scipy.signal.resample_poly(y.cpu().numpy()[0, :], vocoder_config['fs'], 48000)
+            # y_resampled = y_resaampled * 0.95 / np.max(np.abs(y_resampled))
+            y_mel = mel_spectrogram(torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config)
+            # y_mel_schlange = mel_spectrogram(....)
+            # y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
+            # y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
+            # y_g_hat = generator(y_mel_reconst, y.shape[1])
 
-        # compare bitrate change:
-        # y_mel_double = torch.cat((y_mel, y_mel), 1)
-        # varbitTens16 = 16 * torch.ones(y_mel.shape[0], y_mel.shape[2]).to(device)
-        # varbitTens64 = 64 * torch.ones(y_mel.shape[0], y_mel.shape[2]).to(device)
-        # varbit_chang = torch.cat((varbitTens64, varbitTens16), 1)
-        # varbit_cont = torch.cat((varbitTens16, varbitTens16), 1)
-
-        # y_mel_reconst_chang, kld = bvrnn(y_mel_double.permute(0, 2, 1), 1.0, True, varBit_chang)
-        # y_mel_reconst_chang = y_mel_recons_chang.permute(0, 2, 1)
-        # y_g_hat = generator(y_mel_reconst_chang, y.shape[1])
-        # change.append(scipy.signal.resample_poly(y_g_hat[0, 0, 256 * y_mel.shape[2]:end].detach().cpu().numpy(), 48000, config['fs']))
-
-        # y_mel_reconst_cont, kld = bvrnn(y_mel_double.permute(0, 2, 1), 1.0, True, varBit_cont)
-        # y_mel_reconst_cont = y_mel_recons_cont.permute(0, 2, 1)
-        # y_g_hat = generator(y_mel_reconst_cont, y.shape[1])
-        # cont.append(scipy.signal.resample_poly(y_g_hat[0, 0, 256 * y_mel.shape[2]:end].detach().cpu().numpy(), 48000, config['fs']))
-
-        # variable bitrate 
-        for varBit, sig in zip(bitrates,[varBit_8_all, varBit_12_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all]):       
-            varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
-            y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
-            y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
-            y_g_hat = generator(y_mel_reconst, y.shape[1])
             # compare bitrate change:
-            # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
-            sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-        
-        # fixed bitrate
-        # if true:
-        #     varBit = config['z_dim']
-        #     varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
-        #     y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, False, varBit_T)
-        #     y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
-        #     y_g_hat = generator(y_mel_reconst, y.shape[1])
-        #     fixedBit_32_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            # y_mel_double = torch.cat((y_mel, y_mel), 1)
+            # varbitTens16 = 16 * torch.ones(y_mel.shape[0], y_mel.shape[2]).to(device)
+            # varbitTens64 = 64 * torch.ones(y_mel.shape[0], y_mel.shape[2]).to(device)
+            # varbit_chang = torch.cat((varbitTens64, varbitTens16), 1)
+            # varbit_cont = torch.cat((varbitTens16, varbitTens16), 1)
 
-        y_vocoded = generator(y_mel, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
-        # y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
-        # y_vocoded = scipy.signal.resample_poly(y_vocoded, 48000, vocoder_config['fs'])
+            # y_mel_reconst_chang, kld = bvrnn(y_mel_double.permute(0, 2, 1), 1.0, True, varBit_chang)
+            # y_mel_reconst_chang = y_mel_recons_chang.permute(0, 2, 1)
+            # y_g_hat = generator(y_mel_reconst_chang, y.shape[1])
+            # change.append(scipy.signal.resample_poly(y_g_hat[0, 0, 256 * y_mel.shape[2]:end].detach().cpu().numpy(), 48000, config['fs']))
 
-        vocoded_all.append(y_vocoded)
+            # y_mel_reconst_cont, kld = bvrnn(y_mel_double.permute(0, 2, 1), 1.0, True, varBit_cont)
+            # y_mel_reconst_cont = y_mel_recons_cont.permute(0, 2, 1)
+            # y_g_hat = generator(y_mel_reconst_cont, y.shape[1])
+            # cont.append(scipy.signal.resample_poly(y_g_hat[0, 0, 256 * y_mel.shape[2]:end].detach().cpu().numpy(), 48000, config['fs']))
 
-        # opus6_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 6))
-        # opus8_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 8))
-        # opus10_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 10))
-        # opus14_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 14))
+            # variable bitrate 
+            for varBit, sig in zip(bitrates,[varBit_8_all, varBit_12_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all]):       
+                varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
+                y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
+                y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
+                y_g_hat = generator(y_mel_reconst, y.shape[1])
+                # compare bitrate change:
+                # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
+                sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            
+            # fixed bitrate
+            # if true:
+            #     varBit = config['z_dim']
+            #     varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
+            #     y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, False, varBit_T)
+            #     y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
+            #     y_g_hat = generator(y_mel_reconst, y.shape[1])
+            #     fixedBit_32_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
 
-        # lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 3200))
-        # lyra6_all.append(10**(-10/20)*lyra(10**(10/20) * y[0, :].numpy(), 48000, 6000))
-        # lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 9200))
+            y_vocoded = generator(y_mel, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
+            #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
+            y_vocoded = scipy.signal.resample_poly(y_vocoded, 48000, vocoder_config['fs'])
 
-        # encodec1_5_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
-        # encodec3_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
-        # encodec6_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
-        # encodec12_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
+            vocoded_all.append(y_vocoded)
 
-        if idx == 9:
-            break
+            # opus6_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 6))
+            # opus8_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 8))
+            # opus10_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 10))
+            # opus14_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 14))
+
+            # lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 3200))
+            # lyra6_all.append(10**(-10/20)*lyra(10**(10/20) * y[0, :].numpy(), 48000, 6000))
+            # lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 9200))
+
+            # encodec1_5_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
+            # encodec3_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
+            # encodec6_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
+            # encodec12_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
+
+            # if idx == 9:
+            #     break
 
 lengths_all = np.array([y.shape[0] for y in clean_all])
 
@@ -307,7 +314,7 @@ for sw, sigs_method in zip(sws, sigs):
     ovr, sig, bak = compute_dnsmos(sigs_method, 48000)
     mcd = compute_mcd(clean_all, sigs_method, 48000)
     visqol = compute_visqol( executables['visqol_base'],  executables['visqol_bin'], clean_all, sigs_method, 48000)
-    wacc = compute_mean_wacc(sigs_method, txt_test[0:10], 48000, device)
+    wacc = compute_mean_wacc(sigs_method, (np.array(txt_test)[test_test_examples]).tolist(), 48000, device)
     df.loc[:,'pesq'] = pesq
     df.loc[:,'stoi_est'] = stoi_est
     df.loc[:,'pesq_est'] = pesq_est
