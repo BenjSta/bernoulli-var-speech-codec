@@ -49,11 +49,11 @@ def compute_pesq(list_of_refs, list_of_signals, fs):
 
     return np.array(pesqvals)
 
-def compute_estimated_metrics(list_of_refs, list_of_signals, fs):
+def compute_estimated_metrics(list_of_refs, list_of_signals, fs, device='cuda'):
     # load torchaudio SQUIM
     # https://pytorch.org/audio/main/tutorials/squim_tutorial.html#sphx-glr-tutorials-squim-tutorial-py
-    objective_model = SQUIM_OBJECTIVE.get_model().to('cuda')
-    subjective_model = SQUIM_SUBJECTIVE.get_model().to('cuda')
+    objective_model = SQUIM_OBJECTIVE.get_model().to(device)
+    subjective_model = SQUIM_SUBJECTIVE.get_model().to(device)
 
     squim_stoi = []
     squim_pesq = []
@@ -65,9 +65,9 @@ def compute_estimated_metrics(list_of_refs, list_of_signals, fs):
     pbar.set_description("Computing SQUIM...")
 
     for r, s in pbar:
-        stoi, pesq, sisdr = objective_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to('cuda')[None, :])
-        mos = subjective_model(torch.from_numpy(scipy.signal.resample_poly(r / np.max(np.abs(r)), 16000, fs)).to('cuda')[None, :],
-                               torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to('cuda')[None, :])
+        stoi, pesq, sisdr = objective_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to(device)[None, :])
+        mos = subjective_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs).astype('float32')).to(device)[None, :],
+                               torch.from_numpy(scipy.signal.resample_poly(r / np.max(np.abs(r)), 16000, fs).astype('float32')).to(device)[None, :])
         squim_stoi.append(stoi[0].cpu().detach().numpy())
         squim_pesq.append(pesq[0].cpu().detach().numpy())
         squim_sisdr.append(sisdr[0].cpu().detach().numpy())
