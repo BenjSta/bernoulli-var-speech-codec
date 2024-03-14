@@ -52,7 +52,7 @@ def load_paths(dns4_root_datasets_fullband, vctk_txt_root):
     np.random.seed(1)
     test_filelist = []
     for p in VCTK_TEST_PATHS:
-        test_filelist += sorted(glob.glob(os.path.join(p, "*.wav"), recursive=True))
+        test_filelist += sorted(glob.glob(os.path.join(p, "*_mic1.wav"), recursive=True))
     np.random.seed()
 
     test_texts = []
