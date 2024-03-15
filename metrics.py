@@ -13,6 +13,7 @@ import os
 import subprocess
 from torchaudio.pipelines import SQUIM_OBJECTIVE, SQUIM_SUBJECTIVE
 from joblib import Parallel, delayed
+from third_party.NISQA.nisqa.NISQA_model import nisqaModel
 
 def mcd_core(ref, sig, fs):
     mcd_toolbox = Calculate_MCD(MCD_mode="plain")
@@ -75,6 +76,67 @@ def compute_estimated_metrics(list_of_refs, list_of_signals, fs, device='cuda'):
         lengths.append(s.shape[0])
 
     return (np.array(squim_stoi), np.array(squim_pesq), np.array(squim_sisdr), np.array(squim_mos))
+
+def compute_nisqa(list_of_signals, fs):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for i, s in enumerate(list_of_signals):
+            soundfile.write(
+                os.path.join(tmpdir, ("%d.wav"%i).zfill(len('%d'%(len(list_of_signals)-1)))),
+                scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs),
+                16000,
+            )
+        nisqa = nisqaModel({
+            'pretrained_model': 'third_party/NISQA/weights/nisqa.tar',
+            'mode': 'predict_dir',
+            'deg': None,
+            'data_dir': tmpdir,
+            'output_dir': None,
+            'csv_file': None,
+            'csv_deg': None,
+            'num_workers': 10,
+            'bs': 1,
+            'ms_channel': None,
+            'tr_bs_val': 1,
+            'tr_num_workers': 0
+        })
+        df16k = nisqa.predict()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for i, s in enumerate(list_of_signals):
+            soundfile.write(
+                os.path.join(tmpdir, ("%d.wav"%i).zfill(len('%d'%(len(list_of_signals)-1)))),
+                scipy.signal.resample_poly(s / np.max(np.abs(s)), 48000, fs),
+                48000,
+            )
+        nisqa = nisqaModel({
+            'pretrained_model': 'third_party/NISQA/weights/nisqa.tar',
+            'mode': 'predict_dir',
+            'deg': None,
+            'data_dir': tmpdir,
+            'output_dir': None,
+            'csv_file': None,
+            'csv_deg': None,
+            'num_workers': 10,
+            'bs': 1,
+            'ms_channel': None,
+            'tr_bs_val': 1,
+            'tr_num_workers': 0
+        })
+        df48k = nisqa.predict()
+    
+    order16k = np.argsort(np.array(df16k['deg']))
+    order48k = np.argsort(np.array(df48k['deg']))
+
+    return (np.array(df16k['mos_pred'])[order16k], 
+            np.array(df16k['noi_pred'])[order16k], 
+            np.array(df16k['dis_pred'])[order16k], 
+            np.array(df16k['col_pred'])[order16k], 
+            np.array(df16k['loud_pred'])[order16k],
+            np.array(df48k['mos_pred'])[order48k], 
+            np.array(df48k['noi_pred'])[order48k], 
+            np.array(df48k['dis_pred'])[order48k], 
+            np.array(df48k['col_pred'])[order48k], 
+            np.array(df48k['loud_pred'])[order48k])
 
 
 def compute_dnsmos(list_of_signals, fs):

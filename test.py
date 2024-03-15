@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 import tqdm
 import os
 import torch
-from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics, compute_visqol
+from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_nisqa, compute_mcd, compute_estimated_metrics, compute_visqol
 import whisper
 import soundfile
 import time
@@ -29,6 +29,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 model_id = "facebook/encodec_24khz"
 vocoder_config = toml.load("pretrained_vocoder/config.toml")
 vocoder_chkpt_path = "pretrained_vocoder/g_checkpoint"
+vocoder_config2 = toml.load("pretrained_vocoder/config_bigvgan_base.toml")
+vocoder_chkpt_path2 = "pretrained_vocoder/g_checkpoint_bigvgan_base"
 encodec_model = EncodecModel.from_pretrained(model_id)
 encodec_processor = AutoProcessor.from_pretrained(model_id)
 # config = toml.load("configs_coding/config_32bit.toml")
@@ -65,12 +67,14 @@ clean_train, clean_val, clean_test = paths["clean"]
 _, txt_val, txt_test = paths["txt"]
 
 
+
+
 np.random.seed(1)
-test_tensorboard_examples = np.random.choice(len(clean_test), 5, replace=False)
+test_test_examples = np.random.choice(len(clean_test), 5, replace=False)
 np.random.seed()
 
 np.random.seed(1)
-test_test_examples = np.random.choice(len(clean_test), 40, replace=False)
+test_tensorboard_examples = np.random.choice(5, 5, replace=False)
 np.random.seed()
 
 asr_model = whisper.load_model("medium.en")
@@ -99,8 +103,17 @@ mel_spec_config = {'n_fft': vocoder_config["winsize"],
                    'fmin': vocoder_config["fmin"],
                    'fmax': vocoder_config["fmax"],
                    'padding_left': vocoder_config["mel_pad_left"]}
+mel_spec_config2 = {'n_fft': vocoder_config2["winsize"],
+                   'num_mels': vocoder_config2["num_mels"],
+                   'sampling_rate': vocoder_config2["fs"],
+                   'hop_size': vocoder_config2["hopsize"],
+                   'win_size': vocoder_config2["winsize"],
+                   'fmin': vocoder_config2["fmin"],
+                   'fmax': vocoder_config2["fmax"],
+                   'padding_left': vocoder_config2["mel_pad_left"]}
 
 vocoder_config_attr_dict = AttrDict(vocoder_config)
+vocoder_config_attr_dict2 = AttrDict(vocoder_config2)
 
 
 # load a vocoder for waveform generation
@@ -112,6 +125,22 @@ state_dict_g = load_checkpoint(vocoder_chkpt_path, device)
 generator.load_state_dict(state_dict_g["generator"])
 generator.eval()
 print(generator)
+
+generator2 = BigVGAN(vocoder_config_attr_dict2).to(device)
+print("Generator params: {}".format(sum(p.numel()
+      for p in generator.parameters())))
+
+state_dict_g = load_checkpoint(vocoder_chkpt_path2, device)
+
+new_state_dict = {}
+for k in state_dict_g["generator"].keys():
+    if k.startswith("ups.") and k[6] == '0':
+        new_state_dict[k[:6] + '1' + k[7:]] = state_dict_g["generator"][k]
+    else:
+        new_state_dict[k] = state_dict_g["generator"][k]
+generator2.load_state_dict(new_state_dict)
+generator2.eval()
+
 
 # load model 
 bvrnn = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"],
@@ -191,6 +220,8 @@ def encodec(y, fs, bandwidth):
 
 clean_all = []
 vocoded_all = []
+vocoded2_all = []
+vocoded3_all = []
 
 opus6_all = []
 opus8_all = []
@@ -205,12 +236,17 @@ encodec1_5_all = []
 encodec3_all = []
 encodec6_all = []
 encodec12_all = []
-varBit_8_all = []
-varBit_12_all = []
+
 varBit_16_all = []
 varBit_24_all = []
 varBit_32_all = []
 varBit_64_all = []
+
+varBit2_16_all = []
+varBit2_24_all = []
+varBit2_32_all = []
+varBit2_64_all = []
+
 fixedBit_8_all = []
 fixedBit_12_all = []
 fixedBit_16_all = []
@@ -221,14 +257,21 @@ fixedBit_64_all = []
 # sws = ['opus6', 'opus8', 'opus10', 'opus14', 'lyra3_2', 'lyra6',
 #        'lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12']
 
-sws = ['clean', 'vocoded', 'variable8', 'variable12', 'variable16', 'variable24', 'variable32', 'variable64']
+sws = ['clean', 'lyra3_2', 'lyra6',
+       'lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12',
+       'vocoded', 'vocoded2', 'vocoded3', 'variable16', 'variable24',
+       'variable32', 'variable64', 'variable16_2', 'variable24_2',
+       'variable32_2', 'variable64_2']
 
-sigs = [clean_all, vocoded_all, varBit_8_all, varBit_12_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all ]
+sigs = [clean_all, lyra3_2_all, lyra6_all, 
+        lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all,
+        vocoded_all, vocoded2_all, vocoded3_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all,
+        varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]
 
 # sigs = [opus6_all, opus8_all, opus10_all, opus14_all, lyra3_2_all, lyra6_all,
 #          lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all]
 
-bitrates = [8,12,16,24,32,64]
+# bitrates =
 wavPath = 'WAV/'
 
 
@@ -241,6 +284,8 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             y_resampled = scipy.signal.resample_poly(y.cpu().numpy()[0, :], vocoder_config['fs'], 48000)
             # y_resampled = y_resaampled * 0.95 / np.max(np.abs(y_resampled))
             y_mel = mel_spectrogram(torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config)
+            y_mel2 = mel_spectrogram(torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config2)
+            y_mel3 = mel_spectrogram(10**(10/20) * torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config2)
             # y_mel_schlange = mel_spectrogram(....)
             # y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
             # y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
@@ -264,14 +309,28 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             # cont.append(scipy.signal.resample_poly(y_g_hat[0, 0, 256 * y_mel.shape[2]:end].detach().cpu().numpy(), 48000, config['fs']))
 
             # variable bitrate 
-            for varBit, sig in zip(bitrates,[varBit_8_all, varBit_12_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all]):       
+            for varBit, sig in zip( [16,24,32,64],
+                                   [varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all]):       
                 varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
                 y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
                 y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
                 y_g_hat = generator(y_mel_reconst, y.shape[1])
+                #y_g_hat2 = generator2(y_mel_reconst, y.shape[1])
                 # compare bitrate change:
                 # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
                 sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+
+            for varBit, sig in zip( [16,24,32,64],
+                                   [varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]):       
+                varBit_T = varBit * torch.ones(y_mel2.shape[0],y_mel2.shape[2]).to(device)
+                y_mel_reconst, kld = bvrnn(y_mel2.permute(0, 2, 1), 1.0, True, varBit_T)
+                y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
+                #y_g_hat = generator(y_mel_reconst, y.shape[1])
+                y_g_hat2 = generator2(y_mel_reconst, y.shape[1])
+                # compare bitrate change:
+                # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
+                #sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+                sig.append(scipy.signal.resample_poly(y_g_hat2[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             
             # fixed bitrate
             # if true:
@@ -286,21 +345,32 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
             y_vocoded = scipy.signal.resample_poly(y_vocoded, 48000, vocoder_config['fs'])
 
+            y_vocoded2 = generator2(y_mel2, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
+            #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
+            y_vocoded2 = scipy.signal.resample_poly(y_vocoded2, 48000, vocoder_config2['fs'])
+
+            y_vocoded3 = generator2(y_mel3, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
+            #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
+            y_vocoded3 = 10**(-10/20) * scipy.signal.resample_poly(y_vocoded3, 48000, vocoder_config2['fs'])
+
+
             vocoded_all.append(y_vocoded)
+            vocoded2_all.append(y_vocoded2)
+            vocoded3_all.append(y_vocoded3)
 
             # opus6_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 6))
             # opus8_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 8))
             # opus10_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 10))
             # opus14_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 14))
 
-            # lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 3200))
-            # lyra6_all.append(10**(-10/20)*lyra(10**(10/20) * y[0, :].numpy(), 48000, 6000))
-            # lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 9200))
+            lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 3200))
+            lyra6_all.append(10**(-10/20)*lyra(10**(10/20) * y[0, :].numpy(), 48000, 6000))
+            lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 9200))
 
-            # encodec1_5_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
-            # encodec3_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
-            # encodec6_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
-            # encodec12_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
+            encodec1_5_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
+            encodec3_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
+            encodec6_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
+            encodec12_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
 
             # if idx == 9:
             #     break
@@ -310,29 +380,34 @@ lengths_all = np.array([y.shape[0] for y in clean_all])
 for sw, sigs_method in zip(sws, sigs):
     df = pd.DataFrame([])
     pesq = compute_pesq(clean_all, sigs_method, 48000)
-    stoi_est, pesq_est, sisdr_est, mos = compute_estimated_metrics(clean_all, sigs_method, 48000, device) 
-    ovr, sig, bak = compute_dnsmos(sigs_method, 48000)
-    mcd = compute_mcd(clean_all, sigs_method, 48000)
+    #stoi_est, pesq_est, sisdr_est, mos = compute_estimated_metrics(clean_all, sigs_method, 48000, device) 
+    #ovr, sig, bak = compute_dnsmos(sigs_method, 48000)
+    #mcd = compute_mcd(clean_all, sigs_method, 48000)
     visqol = compute_visqol( executables['visqol_base'],  executables['visqol_bin'], clean_all, sigs_method, 48000)
-    wacc = compute_mean_wacc(sigs_method, (np.array(txt_test)[test_test_examples]).tolist(), 48000, device)
+    #wacc = compute_mean_wacc(sigs_method, (np.array(txt_test)[sorted(test_test_examples)]).tolist(), 48000, device)
+    nisqa16_mos, _, _, _, _, nisqa48_mos, _, _, _, _ = compute_nisqa(sigs_method, 48000)
     df.loc[:,'pesq'] = pesq
-    df.loc[:,'stoi_est'] = stoi_est
-    df.loc[:,'pesq_est'] = pesq_est
-    df.loc[:,'sisdr_est'] = sisdr_est
-    df.loc[:,'mos'] = mos
-    df.loc[:,'ovr'] = ovr
-    df.loc[:,'sig'] = sig
-    df.loc[:,'bak'] = bak
-    df.loc[:,'mcd'] = mcd
+    # df.loc[:,'stoi_est'] = stoi_est
+    # df.loc[:,'pesq_est'] = pesq_est
+    # df.loc[:,'sisdr_est'] = sisdr_est
+    # df.loc[:,'mos'] = mos
+    df.loc[:,'nisqa_mos16'] = nisqa16_mos
+    df.loc[:,'nisqa_mos48'] = nisqa48_mos
+    # df.loc[:,'ovr'] = ovr
+    # df.loc[:,'sig'] = sig
+    # df.loc[:,'bak'] = bak
+    #df.loc[:,'mcd'] = mcd
     df.loc[:,'visqol'] = visqol
-    df.loc[:,'wacc'] = wacc
+    #df.loc[:,'wacc'] = wacc
     df.loc[:, 'lengths'] = lengths_all
     fileName = 'testResult/' + sw + '.csv'
     df.to_csv(fileName)
 
-    # write to 
-    # for i in test_tensorboard_examples:
-    #     fname = wavPath + sw + '_%d'%i + '.wav'
-    #     soundfile.write(fname, sigs_method[i], 48000)
+    #write to 
+    for i in test_tensorboard_examples:
+        fname = wavPath + sw + '_%d'%i + '.wav'
+        soundfile.write(fname, sigs_method[i], 48000)
+        fname = wavPath + sw + '_%d'%i + '_16k.wav'
+        soundfile.write(fname, scipy.signal.resample_poly(sigs_method[i], 16000, 48000), 16000)
 
 

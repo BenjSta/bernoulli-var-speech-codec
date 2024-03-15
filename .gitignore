@@ -16,3 +16,6 @@ tmp*
 data_directories.toml
 executable_paths.toml
 chkpt_log_dirs.toml
+WAV/*
+testResult/*
+*.png
