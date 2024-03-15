@@ -3,8 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 #import scienceplots
 
-plt.style.use('default')
-# plt.style.use('science')
+plt.style.use(['science', 'nature'])
 # plt.style.use(['science','grid'])
 
 def calcMedMeanInter(data, metric,):
@@ -15,6 +14,7 @@ def calcMedMeanInter(data, metric,):
     return mean, median, inter25, inter75
 
 def singleErrorBar(data, metric, x,color, marker):
+def singleErrorBar(data, metric, x,color, marker):
     mean, median, inter25, inter75 = calcMedMeanInter(data, metric)
     plt.errorbar(x, median, yerr = np.array([[median-inter25], [inter75-median]]),color=color, capsize=3, fmt=marker)
 #    plt.text(x + 0.2, median - 0.2, name, fontsize=8)
@@ -24,7 +24,7 @@ def medianTrend(plotData, metric, x, color):
     inter25 = []
     inter75 = []
     for data in plotData:
-        _, medi, int25, int75 = calcMedMeanInter(data, metric)
+        mean, medi, int25, int75 = calcMedMeanInter(data, metric)
         median.append(medi)
         inter25.append(int25)
         inter75.append(int75)
@@ -60,7 +60,13 @@ def main():
     lyra9_2 = pd.read_csv('testResult/lyra9_2.csv', index_col=0)
     opus6 = pd.read_csv('testResult/opus6.csv', index_col=0)
     opus10 = pd.read_csv('testResult/opus10.csv', index_col=0)
-    opus14= pd.read_csv('testResult/opus14.csv', index_col=0)
+    opus14 = pd.read_csv('testResult/opus14.csv', index_col=0)
+    variable8 = pd.read_csv('testResult/variable8.csv', index_col=0)
+    variable12 = pd.read_csv('testResult/variable12.csv', index_col=0)
+    variable16 = pd.read_csv('testResult/variable16.csv', index_col=0)
+    variable24 = pd.read_csv('testResult/variable24.csv', index_col=0)
+    variable32 = pd.read_csv('testResult/variable32.csv', index_col=0)
+    variable64 = pd.read_csv('testResult/variable64.csv', index_col=0)
 
     data = [clean, vocoded, encodec1_5, encodec3, encodec6, encodec12, 
             lyra3_2, lyra6, lyra9_2, var16, var24, var32, var64,  var16_2, var24_2, var32_2, var64_2]
@@ -83,7 +89,7 @@ def main():
     plt.ylabel('PESQ')
     plt.xlabel('Bitrate in kbps')
     plt.grid()
-    plt.savefig('test.png')
+    plt.savefig(metric + '.png')
 
 
 

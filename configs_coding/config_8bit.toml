@@ -1,8 +1,8 @@
-train_name = "32bit_fixed"
+train_name = "8bit_fixed"
 
 adam_b1= 0.9
 adam_b2= 0.999
-batch_size=32
+batch_size=16
 
 
 validate_only = false
@@ -13,30 +13,26 @@ max_steps = 200000
 
 num_workers = 8
 
-learning_rate= 0.0002
-lr_decay= 0.99999306855
-scheduler_max_steps = 200000
-grad_clip = 130
+lr_decay= 0.99998848714
 
 num_mels=80
 fmin=0
 fmax=8000
-mel_pad_left=256
+mel_pad_left=-1
 
 h_dim = 1024
-z_dim = 32
+z_dim = 8
 log_sigma_init = -1.0
-var_bit = false
-p_bitratechange = 0.3
 
 teacher_force_step_1perc = 30000
-resume = true
+resume = false
 
 fs = 22050
 winsize = 1024
 hopsize = 256
 train_seq_duration = 4.0
 vocoder_config.resblock="1"
+learning_rate= 0.0002
 
 vocoder_checkpoint = "./pretrained_vocoder/g_checkpoint"
 
