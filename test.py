@@ -77,7 +77,7 @@ with open('vq_coeffs/vh.pkl', 'rb') as f:
     vh = pickle.load(f)
 
 
-def quantizer_encode_decode(mel_spec):
+def quantizer_encode_decode(mel_spec, layers):
     num_time_frames = mel_spec.shape[0]
     num_supervectors = num_time_frames // 3
     valid_length = num_supervectors * 3
@@ -88,7 +88,8 @@ def quantizer_encode_decode(mel_spec):
     residual = mel_spec @ vh.T
     
     reconst = np.zeros_like(mel_spec)
-    for q in quantizers:
+
+    for q in quantizers[:layers]:
         quantized = q.cluster_centers_[q.predict(residual), :]
         residual = residual - quantized
         reconst += quantized
@@ -100,7 +101,7 @@ def quantizer_encode_decode(mel_spec):
 
 
 np.random.seed(1)
-test_test_examples = np.random.choice(len(clean_test), 20, replace=False)
+test_test_examples = np.random.choice(len(clean_test), 30, replace=False)
 np.random.seed()
 
 np.random.seed(1)
@@ -172,17 +173,48 @@ generator2.eval()
 
 
 # load model 
-bvrnn = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"],
+# variable bitrate
+bvrnn_var = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"],
             [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], config["var_bit"]).to(device)
-script_bvrnn = torch.jit.script(bvrnn)
-
+script_bvrnn_var = torch.jit.script(bvrnn_var)
 chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], config["train_name"], 'checkpoints')
 os.makedirs(chkpt_dir, exist_ok=True)
-
-
 state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
-bvrnn.load_state_dict(state_dict_vrnn["vrnn"])
+bvrnn_var.load_state_dict(state_dict_vrnn["vrnn"])
 steps = state_dict_vrnn["steps"]
+# fixed 16
+bvrnn_fix_16 = BVRNN(config["num_mels"], config["h_dim"], 16,
+                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+script_bvrnn_16 = torch.jit.script(bvrnn_fix_16)
+chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '16bit_fixed', 'checkpoints')
+os.makedirs(chkpt_dir, exist_ok=True)
+state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+bvrnn_fix_16.load_state_dict(state_dict_vrnn["vrnn"])
+# fixed 24
+bvrnn_fix_24 = BVRNN(config["num_mels"], config["h_dim"], 24,
+                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+script_bvrnn_24 = torch.jit.script(bvrnn_fix_24)
+chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '24bit_fixed', 'checkpoints')
+os.makedirs(chkpt_dir, exist_ok=True)
+state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+bvrnn_fix_24.load_state_dict(state_dict_vrnn["vrnn"])
+# fixed 32
+bvrnn_fix_32 = BVRNN(config["num_mels"], config["h_dim"], 32,
+                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+script_bvrnn_32 = torch.jit.script(bvrnn_fix_32)
+chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '32bit_fixed', 'checkpoints')
+os.makedirs(chkpt_dir, exist_ok=True)
+state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+bvrnn_fix_32.load_state_dict(state_dict_vrnn["vrnn"])
+# fixed 64
+bvrnn_fix_64 = BVRNN(config["num_mels"], config["h_dim"], 64,
+                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+script_bvrnn_64 = torch.jit.script(bvrnn_fix_64)
+chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '64bit_fixed', 'checkpoints')
+os.makedirs(chkpt_dir, exist_ok=True)
+state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+bvrnn_fix_64.load_state_dict(state_dict_vrnn["vrnn"])
+
 
 
 def constr(input_res):
@@ -286,21 +318,46 @@ fixedBit_24_all = []
 fixedBit_32_all = []
 fixedBit_64_all = []
 
+L1_fix_16 = []
+L1_fix_24 = []
+L1_fix_32 = []
+L1_fix_64 = []
+L1_var_16 = []
+L1_var_24 = []
+L1_var_32 = []
+L1_var_64 = []
+L1_quant_16 = []
+L1_quant_24 = []
+L1_quant_32 = []
+L2_fix_16 = []
+L2_fix_24 = []
+L2_fix_32 = []
+L2_fix_64 = []
+L2_var_16 = []
+L2_var_24 = []
+L2_var_32 = []
+L2_var_64 = []
+L2_quant_16 = []
+L2_quant_24 = []
+L2_quant_32 = []
+
 # sws = ['opus6', 'opus8', 'opus10', 'opus14', 'lyra3_2', 'lyra6',
 #        'lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12']
 
-sws = ['clean', 'lyra3_2', 'lyra6',
-       'lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12',
-       'vocoded', 'vocoded2', 'vocoded3', 'quantizer', 'quantizer2', 'variable16', 'variable24',
-       'variable32', 'variable64', 'variable16_2', 'variable24_2',
-       'variable32_2', 'variable64_2']
+# sws = ['clean', 'lyra3_2', 'lyra6',
+#        'lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12',
+#        'vocoded', 'vocoded2', 'vocoded3', 'quantizer', 'quantizer2', 'variable16', 'variable24',
+#        'variable32', 'variable64', 'variable16_2', 'variable24_2',
+#        'variable32_2', 'variable64_2']
 
-sigs = [clean_all, lyra3_2_all, lyra6_all, 
-        lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all,
-        vocoded_all, vocoded2_all, vocoded3_all, quantizer_all, quantizer2_all,
-        varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all,
-        varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]
+# sigs = [clean_all, lyra3_2_all, lyra6_all, 
+#         lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all,
+#         vocoded_all, vocoded2_all, vocoded3_all, quantizer_all, quantizer2_all,
+#         varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all,
+#         varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]
 
+sws = ['clean', 'quantizer_all','variable16', 'variable24','variable32', 'variable64']
+sigs = [clean_all, quantizer_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all]
 # sigs = [opus6_all, opus8_all, opus10_all, opus14_all, lyra3_2_all, lyra6_all,
 #          lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all]
 
@@ -342,34 +399,43 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             # cont.append(scipy.signal.resample_poly(y_g_hat[0, 0, 256 * y_mel.shape[2]:end].detach().cpu().numpy(), 48000, config['fs']))
 
             # variable bitrate 
-            for varBit, sig in zip( [16,24,32,64],
-                                   [varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all]):       
+            for varBit, sig, L1, L2 in zip( [16,24,32,64],
+                                   [varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all], 
+                                   [L1_var_16, L1_var_24, L1_var_32, L1_var_64],
+                                   [L2_var_16, L2_var_24, L2_var_32, L2_var_64]):  
                 varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
-                y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
+                y_mel_reconst, kld = bvrnn_var(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
                 y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
                 y_g_hat = generator(y_mel_reconst, y.shape[1])
                 #y_g_hat2 = generator2(y_mel_reconst, y.shape[1])
                 # compare bitrate change:
                 # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
+                L1.append(torch.mean(torch.abs(y_mel[0, :, :] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
+                L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
                 sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-            y_mel_reconst = quantizer_encode_decode(y_mel[0, :, :].cpu().numpy().T)
-            y_mel_reconst = torch.from_numpy(y_mel_reconst[None, :, :].astype('float32')).permute(0, 2, 1).to(device)
+            for layers, L1, L2 in zip([6,9,12],[L1_quant_16, L1_quant_24, L1_quant_32], [L2_quant_16, L2_quant_24, L2_quant_32]):
+                y_mel_reconst = quantizer_encode_decode(y_mel[0, :, :].cpu().numpy().T, layers)
+                y_mel_reconst = torch.from_numpy(y_mel_reconst[None, :, :].astype('float32')).permute(0, 2, 1).to(device)
+                L1.append(torch.mean(torch.abs(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
+                L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
             y_g_hat = generator(y_mel_reconst, y.shape[1])
             quantizer_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-            y_g_hat = generator2(y_mel_reconst, y.shape[1])
-            quantizer2_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            # S comment 25032024 0900
+            # y_g_hat = generator2(y_mel_reconst, y.shape[1])
+            # quantizer2_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             
-            for varBit, sig in zip( [16,24,32,64],
-                                   [varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]):       
-                varBit_T = varBit * torch.ones(y_mel2.shape[0],y_mel2.shape[2]).to(device)
-                y_mel_reconst, kld = bvrnn(y_mel2.permute(0, 2, 1), 1.0, True, varBit_T)
-                y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
-                #y_g_hat = generator(y_mel_reconst, y.shape[1])
-                y_g_hat2 = generator2(y_mel_reconst, y.shape[1])
-                # compare bitrate change:
-                # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
-                #sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-                sig.append(scipy.signal.resample_poly(y_g_hat2[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            
+            # for varBit, sig in zip( [16,24,32,64],
+            #                        [varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]):       
+            #     varBit_T = varBit * torch.ones(y_mel2.shape[0],y_mel2.shape[2]).to(device)
+            #     y_mel_reconst, kld = bvrnn(y_mel2.permute(0, 2, 1), 1.0, True, varBit_T)
+            #     y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
+            #     #y_g_hat = generator(y_mel_reconst, y.shape[1])
+            #     y_g_hat2 = generator2(y_mel_reconst, y.shape[1])
+            #     # compare bitrate change:
+            #     # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
+            #     #sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            #     sig.append(scipy.signal.resample_poly(y_g_hat2[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             
             # fixed bitrate
             # if true:
@@ -379,37 +445,49 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             #     y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
             #     y_g_hat = generator(y_mel_reconst, y.shape[1])
             #     fixedBit_32_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-
-            y_vocoded = generator(y_mel, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
-            #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
-            y_vocoded = scipy.signal.resample_poly(y_vocoded, 48000, vocoder_config['fs'])
-
-            y_vocoded2 = generator2(y_mel2, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
-            #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
-            y_vocoded2 = scipy.signal.resample_poly(y_vocoded2, 48000, vocoder_config2['fs'])
-
-            y_vocoded3 = generator2(y_mel3, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
-            #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
-            y_vocoded3 = 10**(-10/20) * scipy.signal.resample_poly(y_vocoded3, 48000, vocoder_config2['fs'])
+            for zdim, model, L1, L2 in zip([16,24,32,64], [bvrnn_fix_16, bvrnn_fix_24, bvrnn_fix_32, bvrnn_fix_64],
+                                          [L1_fix_16, L1_fix_24, L1_fix_32, L1_fix_64],
+                                          [L2_fix_16, L2_fix_24, L2_fix_32, L2_fix_64]):
+                varBit = zdim
+                varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
+                y_mel_reconst, kld = model(y_mel.permute(0, 2, 1), 1.0, False, varBit_T)
+                y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
+                L1.append(torch.mean(torch.abs(y_mel[0, :, :] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
+                L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
 
 
-            vocoded_all.append(y_vocoded)
-            vocoded2_all.append(y_vocoded2)
-            vocoded3_all.append(y_vocoded3)
+            # S comment 25032024 0900
 
-            # opus6_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 6))
-            # opus8_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 8))
-            # opus10_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 10))
-            # opus14_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 14))
+            # y_vocoded = generator(y_mel, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
+            # #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
+            # y_vocoded = scipy.signal.resample_poly(y_vocoded, 48000, vocoder_config['fs'])
 
-            lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 3200))
-            lyra6_all.append(10**(-10/20)*lyra(10**(10/20) * y[0, :].numpy(), 48000, 6000))
-            lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 9200))
+            # y_vocoded2 = generator2(y_mel2, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
+            # #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
+            # y_vocoded2 = scipy.signal.resample_poly(y_vocoded2, 48000, vocoder_config2['fs'])
 
-            encodec1_5_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
-            encodec3_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
-            encodec6_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
-            encodec12_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
+            # y_vocoded3 = generator2(y_mel3, y_resampled.shape[0])[0, 0, :].detach().cpu().numpy()
+            # #y_vocoded = y_vocoded * np.max(np.abs(y_resampled)) / 0.95
+            # y_vocoded3 = 10**(-10/20) * scipy.signal.resample_poly(y_vocoded3, 48000, vocoder_config2['fs'])
+
+
+            # vocoded_all.append(y_vocoded)
+            # vocoded2_all.append(y_vocoded2)
+            # vocoded3_all.append(y_vocoded3)
+
+            # # opus6_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 6))
+            # # opus8_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 8))
+            # # opus10_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 10))
+            # # opus14_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 14))
+
+            # lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 3200))
+            # lyra6_all.append(10**(-10/20)*lyra(10**(10/20) * y[0, :].numpy(), 48000, 6000))
+            # lyra9_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 9200))
+
+            # encodec1_5_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 1.5))
+            # encodec3_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 3))
+            # encodec6_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
+            # encodec12_all.append(10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
 
             # if idx == 9:
             #     break
@@ -435,18 +513,33 @@ for sw, sigs_method in zip(sws, sigs):
     # df.loc[:,'ovr'] = ovr
     # df.loc[:,'sig'] = sig
     # df.loc[:,'bak'] = bak
-    #df.loc[:,'mcd'] = mcd
+    #df.loc[:,'mcd'] = mcd‚
     df.loc[:,'visqol'] = visqol
     #df.loc[:,'wacc'] = wacc
     df.loc[:, 'lengths'] = lengths_all
     fileName = 'testResult/' + sw + '.csv'
     df.to_csv(fileName)
 
+distances = [L1_fix_16, L1_fix_24, L1_fix_32, L1_fix_64, L1_var_16, L1_var_24, L1_var_32, L1_var_64, 
+             L1_quant_16, L1_quant_24, L1_quant_32,L2_fix_16, L2_fix_24, L2_fix_32, L2_fix_64, 
+            L2_var_16, L2_var_24, L2_var_32, L2_var_64, L2_quant_16, L2_quant_24, L2_quant_32]
+
+names = ['L1_fix_16', 'L1_fix_24', 'L1_fix_32', 'L1_fix_64', 'L1_var_16', 'L1_var_24', 'L1_var_32', 'L1_var_64', 
+             'L1_quant_16', 'L1_quant_24', 'L1_quant_32', 'L2_fix_16', 'L2_fix_24', 'L2_fix_32', 'L2_fix_64', 
+            'L2_var_16', 'L2_var_24', 'L2_var_32', 'L2_var_64', 'L2_quant_16', 'L2_quant_24', 'L2_quant_32']
+
+df = pd.DataFrame([])
+for data, name in zip(distances, names):
+    print(name)
+    df.loc[:,name] = data
+df.loc[:,'lengths'] = lengths_all
+df.to_csv('testResult/Distances.csv')
+    
     #write to 
-    for i in test_tensorboard_examples:
-        fname = wavPath + sw + '_%d'%i + '.wav'
-        soundfile.write(fname, sigs_method[i], 48000)
-        fname = wavPath + sw + '_%d'%i + '_16k.wav'
-        soundfile.write(fname, scipy.signal.resample_poly(sigs_method[i], 16000, 48000), 16000)
+    # for i in test_tensorboard_examples:
+    #     fname = wavPath + sw + '_%d'%i + '.wav'
+    #     soundfile.write(fname, sigs_method[i], 48000)
+    #     fname = wavPath + sw + '_%d'%i + '_16k.wav'
+    #     soundfile.write(fname, scipy.signal.resample_poly(sigs_method[i], 16000, 48000), 16000)
 
 
