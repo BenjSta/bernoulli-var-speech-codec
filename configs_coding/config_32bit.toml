@@ -30,7 +30,7 @@ var_bit = false
 p_bitratechange = 0.3
 
 teacher_force_step_1perc = 30000
-resume = true
+resume = false
 
 fs = 22050
 winsize = 1024
