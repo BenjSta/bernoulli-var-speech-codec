@@ -68,16 +68,45 @@ _, txt_val, txt_test = paths["txt"]
 
 
 
+import pickle
+with open('vq_coeffs/quantizers.pkl', 'rb') as f:
+    quantizers = pickle.load(f)
+with open('vq_coeffs/mu.pkl', 'rb') as f:
+    mu = pickle.load(f)
+with open('vq_coeffs/vh.pkl', 'rb') as f:
+    vh = pickle.load(f)
+
+
+def quantizer_encode_decode(mel_spec):
+    num_time_frames = mel_spec.shape[0]
+    num_supervectors = num_time_frames // 3
+    valid_length = num_supervectors * 3
+    mel_spec = mel_spec[:valid_length, :]
+    mel_spec = mel_spec.reshape(num_supervectors, 3 * mel_spec.shape[1])
+
+    mel_spec = mel_spec - mu
+    residual = mel_spec @ vh.T
+    
+    reconst = np.zeros_like(mel_spec)
+    for q in quantizers:
+        quantized = q.cluster_centers_[q.predict(residual), :]
+        residual = residual - quantized
+        reconst += quantized
+    
+    reconst = reconst @ vh
+    reconst = reconst + mu
+    reconst = reconst.reshape(valid_length, -1)
+    return reconst
+
 
 np.random.seed(1)
-test_test_examples = np.random.choice(len(clean_test), 5, replace=False)
+test_test_examples = np.random.choice(len(clean_test), 20, replace=False)
 np.random.seed()
 
 np.random.seed(1)
-test_tensorboard_examples = np.random.choice(5, 5, replace=False)
+test_tensorboard_examples = np.random.choice(20, 5, replace=False)
 np.random.seed()
 
-asr_model = whisper.load_model("medium.en")
 
 test_dataset = SpeechDataset(
     clean_test,
@@ -237,6 +266,9 @@ encodec3_all = []
 encodec6_all = []
 encodec12_all = []
 
+quantizer_all = []
+quantizer2_all = []
+
 varBit_16_all = []
 varBit_24_all = []
 varBit_32_all = []
@@ -259,13 +291,14 @@ fixedBit_64_all = []
 
 sws = ['clean', 'lyra3_2', 'lyra6',
        'lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12',
-       'vocoded', 'vocoded2', 'vocoded3', 'variable16', 'variable24',
+       'vocoded', 'vocoded2', 'vocoded3', 'quantizer', 'quantizer2', 'variable16', 'variable24',
        'variable32', 'variable64', 'variable16_2', 'variable24_2',
        'variable32_2', 'variable64_2']
 
 sigs = [clean_all, lyra3_2_all, lyra6_all, 
         lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all,
-        vocoded_all, vocoded2_all, vocoded3_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all,
+        vocoded_all, vocoded2_all, vocoded3_all, quantizer_all, quantizer2_all,
+        varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all,
         varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]
 
 # sigs = [opus6_all, opus8_all, opus10_all, opus14_all, lyra3_2_all, lyra6_all,
@@ -319,7 +352,13 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
                 # compare bitrate change:
                 # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
                 sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-
+            y_mel_reconst = quantizer_encode_decode(y_mel[0, :, :].cpu().numpy().T)
+            y_mel_reconst = torch.from_numpy(y_mel_reconst[None, :, :].astype('float32')).permute(0, 2, 1).to(device)
+            y_g_hat = generator(y_mel_reconst, y.shape[1])
+            quantizer_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            y_g_hat = generator2(y_mel_reconst, y.shape[1])
+            quantizer2_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            
             for varBit, sig in zip( [16,24,32,64],
                                    [varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]):       
                 varBit_T = varBit * torch.ones(y_mel2.shape[0],y_mel2.shape[2]).to(device)
