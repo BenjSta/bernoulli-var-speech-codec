@@ -144,3 +144,59 @@ class BVRNN(nn.Module):
             all_dec_mean.append(dec_t)
 
         return torch.stack(all_dec_mean).permute(1, 0, 2), torch.mean(torch.stack(kld_loss))
+    
+
+    def encode(self, y: Tensor,  varBitrate: Tensor, h2: Tensor)->Tuple[Tensor, Tensor]:
+        y = (y - self.mean_mel[None, None, :]) / self.std_mel[None, None, :]
+
+        all_z = []
+        all_h = []
+
+        phi_x = self.phi_x(y)
+
+        #h2 = torch.zeros(1, y.size(0), self.h_dim, device=self.device)
+        if self.varBit:
+            bit_cond_helper = torch.arange(0, self.z_dim, 1).to(y.device)
+            bit_mask = varBitrate[:,:,None] > bit_cond_helper[None,None,:]
+        else:
+            bit_cond_helper = torch.zeros((0,0,0), device=y.device)
+            bit_mask = torch.zeros((0,0,0), device=y.device)
+
+        for t in range(y.size(1)):
+            phi_x_t = phi_x[:, t, :]
+
+            enc_t = self.enc(torch.cat([phi_x_t, h2[-1, :, :]], 1))
+
+            z_t = torch.round(enc_t)
+
+            if self.varBit:
+                z_t = z_t * bit_mask[:,t,:].float() + 0.5 * (1-bit_mask[:,t,:].float())
+
+            all_z.append(z_t)
+                
+            phi_z_t = self.phi_z(z_t)
+            
+            
+            
+            dec_t = self.dec(torch.cat([phi_z_t, h2[-1, :, :]], 1))
+            
+            phi_x_t_gen = self.phi_x((dec_t - self.mean_mel[None, :]) / self.std_mel[None, :])
+            all_h.append(h2[0, :, :])
+            _, h2 = self.rnn(torch.cat([phi_x_t_gen, phi_z_t], 1).unsqueeze(1), h2)
+            
+
+        return torch.stack(all_z).permute(1, 0, 2), torch.stack(all_h).permute(1, 0, 2)
+    
+    def decode(self, z: Tensor, h2: Tensor)->Tuple[Tensor, Tensor]:
+        all_dec = []
+        #h2 = torch.zeros(1, z.size(0), self.h_dim, device=self.device)
+
+        for t in range(z.size(1)):
+            phi_z_t = self.phi_z(z[:, t, :])
+            dec_t = self.dec(torch.cat([phi_z_t, h2[-1, :, :]], 1))
+            all_dec.append(dec_t)
+            phi_x_t_gen = self.phi_x((dec_t - self.mean_mel[None, :]) / self.std_mel[None, :])
+            _, h2 = self.rnn(torch.cat([phi_x_t_gen, phi_z_t], 1).unsqueeze(1), h2)
+
+
+        return torch.stack(all_dec).permute(1, 0, 2), h2
