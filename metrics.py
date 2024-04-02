@@ -81,9 +81,9 @@ def compute_nisqa(list_of_signals, fs):
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, s in enumerate(list_of_signals):
             soundfile.write(
-                os.path.join(tmpdir, ("%d.wav"%i).zfill(len('%d'%(len(list_of_signals)-1)))),
-                scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs),
-                16000,
+                os.path.join(tmpdir, ("%d"%i).zfill(len('%d'%(len(list_of_signals)-1))) + '.wav'),
+                scipy.signal.resample_poly(s / np.max(np.abs(s)), 48000, fs),
+                48000,
             )
         nisqa = nisqaModel({
             'pretrained_model': 'third_party/NISQA/weights/nisqa.tar',
@@ -104,7 +104,7 @@ def compute_nisqa(list_of_signals, fs):
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, s in enumerate(list_of_signals):
             soundfile.write(
-                os.path.join(tmpdir, ("%d.wav"%i).zfill(len('%d'%(len(list_of_signals)-1)))),
+                os.path.join(tmpdir, ("%d"%i).zfill(len('%d'%(len(list_of_signals)-1))) + '.wav'),
                 scipy.signal.resample_poly(s / np.max(np.abs(s)), 48000, fs),
                 48000,
             )
