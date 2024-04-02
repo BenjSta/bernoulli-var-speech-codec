@@ -28,9 +28,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 model_id = "facebook/encodec_24khz"
 vocoder_config = toml.load("pretrained_vocoder/config.toml")
-vocoder_chkpt_path = "pretrained_vocoder/g_checkpoint"
-vocoder_config2 = toml.load("pretrained_vocoder/config_bigvgan_base.toml")
-vocoder_chkpt_path2 = "pretrained_vocoder/g_checkpoint_bigvgan_base"
+vocoder_chkpt_path = "pretrained_vocoder/g_2500000"
+vocoder_config2 = toml.load("pretrained_vocoder/config.toml")
+vocoder_chkpt_path2 = "pretrained_vocoder/vq_ft_g_3380000"
 encodec_model = EncodecModel.from_pretrained(model_id)
 encodec_processor = AutoProcessor.from_pretrained(model_id)
 # config = toml.load("configs_coding/config_32bit.toml")
@@ -69,7 +69,7 @@ _, txt_val, txt_test = paths["txt"]
 
 
 import pickle
-with open('vq_coeffs/quantizers.pkl', 'rb') as f:
+with open('vq_coeffs/quantizers2.pkl', 'rb') as f:
     quantizers = pickle.load(f)
 with open('vq_coeffs/mu.pkl', 'rb') as f:
     mu = pickle.load(f)
@@ -124,6 +124,21 @@ test_dataloader = DataLoader(
     0,
 )
 
+validation_dataset = SpeechDataset(
+    clean_val,
+    duration=None,
+    fs=48000,
+)
+
+validation_dataloader = DataLoader(
+    validation_dataset,
+    1,
+    False,
+    None,
+    None,
+    0,
+)
+
 
 mel_spec_config = {'n_fft': vocoder_config["winsize"],
                    'num_mels': vocoder_config["num_mels"],
@@ -162,13 +177,13 @@ print("Generator params: {}".format(sum(p.numel()
 
 state_dict_g = load_checkpoint(vocoder_chkpt_path2, device)
 
-new_state_dict = {}
-for k in state_dict_g["generator"].keys():
-    if k.startswith("ups.") and k[6] == '0':
-        new_state_dict[k[:6] + '1' + k[7:]] = state_dict_g["generator"][k]
-    else:
-        new_state_dict[k] = state_dict_g["generator"][k]
-generator2.load_state_dict(new_state_dict)
+# new_state_dict = {}
+# for k in state_dict_g["generator"].keys():
+#     if k.startswith("ups.") and k[6] == '0':
+#         new_state_dict[k[:6] + '1' + k[7:]] = state_dict_g["generator"][k]
+#     else:
+#         new_state_dict[k] = state_dict_g["generator"][k]
+generator2.load_state_dict(state_dict_g["generator"])
 generator2.eval()
 
 
@@ -287,7 +302,7 @@ vocoded3_all = []
 opus6_all = []
 opus8_all = []
 opus10_all = []
-opus14_all = []
+opus12_all = []
 
 lyra3_2_all = []
 lyra6_all = []
@@ -318,6 +333,16 @@ fixedBit_24_all = []
 fixedBit_32_all = []
 fixedBit_64_all = []
 
+quant_16_all = []
+quant_24_all = []
+quant_32_all = []
+quant_64_all = []
+
+quant_16_ft_all = []
+quant_24_ft_all = []
+quant_32_ft_all = []
+quant_64_ft_all = []
+
 L1_fix_16 = []
 L1_fix_24 = []
 L1_fix_32 = []
@@ -329,6 +354,7 @@ L1_var_64 = []
 L1_quant_16 = []
 L1_quant_24 = []
 L1_quant_32 = []
+L1_quant_64 = []
 L2_fix_16 = []
 L2_fix_24 = []
 L2_fix_32 = []
@@ -340,6 +366,7 @@ L2_var_64 = []
 L2_quant_16 = []
 L2_quant_24 = []
 L2_quant_32 = []
+L2_quant_64 = []
 
 # sws = ['opus6', 'opus8', 'opus10', 'opus14', 'lyra3_2', 'lyra6',
 #        'lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12']
@@ -356,8 +383,12 @@ L2_quant_32 = []
 #         varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all,
 #         varBit2_16_all, varBit2_24_all, varBit2_32_all, varBit2_64_all]
 
-sws = ['clean', 'quantizer_all','variable16', 'variable24','variable32', 'variable64']
-sigs = [clean_all, quantizer_all, varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all]
+# sws = ['clean','opus6', 'opus8', 'opus10', 'opus12','lyra3_2', 'lyra6','lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12']
+# sigs = [clean_all, opus6_all, opus8_all, opus10_all, opus12_all, lyra3_2_all, lyra6_all, lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all]
+
+sws = ['quantizer16_val', 'quantizer24_val', 'quantizer32_val', 'quantizer64_val', 'quantizer16_ft_val', 'quantizer24_ft_val', 'quantizer32_ft_val', 'quantizer64_ft_val']
+sigs = [quant_16_all, quant_24_all, quant_32_all, quant_64_all, quant_16_ft_all, quant_24_ft_all, quant_32_ft_all, quant_64_ft_all]
+
 # sigs = [opus6_all, opus8_all, opus10_all, opus14_all, lyra3_2_all, lyra6_all,
 #          lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all]
 
@@ -367,15 +398,15 @@ wavPath = 'WAV/'
 
 
 np.random.seed(1)
-for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
+for idx,(y,) in enumerate(tqdm.tqdm(validation_dataloader)):
     if idx in test_test_examples:
         with torch.no_grad():
             clean_all.append(y[0, :].numpy())
             y_resampled = scipy.signal.resample_poly(y.cpu().numpy()[0, :], vocoder_config['fs'], 48000)
             # y_resampled = y_resaampled * 0.95 / np.max(np.abs(y_resampled))
             y_mel = mel_spectrogram(torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config)
-            y_mel2 = mel_spectrogram(torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config2)
-            y_mel3 = mel_spectrogram(10**(10/20) * torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config2)
+            # y_mel2 = mel_spectrogram(torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config2)
+            # y_mel3 = mel_spectrogram(10**(10/20) * torch.from_numpy(y_resampled).to(device)[None, :], **mel_spec_config2)
             # y_mel_schlange = mel_spectrogram(....)
             # y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
             # y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
@@ -399,27 +430,30 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             # cont.append(scipy.signal.resample_poly(y_g_hat[0, 0, 256 * y_mel.shape[2]:end].detach().cpu().numpy(), 48000, config['fs']))
 
             # variable bitrate 
-            for varBit, sig, L1, L2 in zip( [16,24,32,64],
-                                   [varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all], 
-                                   [L1_var_16, L1_var_24, L1_var_32, L1_var_64],
-                                   [L2_var_16, L2_var_24, L2_var_32, L2_var_64]):  
-                varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
-                y_mel_reconst, kld = bvrnn_var(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
-                y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
-                y_g_hat = generator(y_mel_reconst, y.shape[1])
+            # for varBit, sig, L1, L2 in zip( [16,24,32,64],
+            #                        [varBit_16_all, varBit_24_all, varBit_32_all, varBit_64_all], 
+            #                        [L1_var_16, L1_var_24, L1_var_32, L1_var_64],
+            #                        [L2_var_16, L2_var_24, L2_var_32, L2_var_64]):  
+            #     varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
+            #     y_mel_reconst, kld = bvrnn_var(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
+            #     y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
+                # y_g_hat = generator(y_mel_reconst, y.shape[1])
                 #y_g_hat2 = generator2(y_mel_reconst, y.shape[1])
                 # compare bitrate change:
                 # y_g_hat[0, 0, 256* y_mel.shape[2]:end]
-                L1.append(torch.mean(torch.abs(y_mel[0, :, :] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
-                L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
-                sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-            for layers, L1, L2 in zip([6,9,12],[L1_quant_16, L1_quant_24, L1_quant_32], [L2_quant_16, L2_quant_24, L2_quant_32]):
+                # L1.append(torch.mean(torch.abs(y_mel[0, :, :] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
+                # L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
+                # sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            for layers, sigs_nft, sigs_ft in zip([6,9,12,24],[quant_16_all, quant_24_all, quant_32_all, quant_64_all], 
+                                             [quant_16_ft_all, quant_24_ft_all, quant_32_ft_all, quant_64_ft_all]):
                 y_mel_reconst = quantizer_encode_decode(y_mel[0, :, :].cpu().numpy().T, layers)
                 y_mel_reconst = torch.from_numpy(y_mel_reconst[None, :, :].astype('float32')).permute(0, 2, 1).to(device)
-                L1.append(torch.mean(torch.abs(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
-                L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
-            y_g_hat = generator(y_mel_reconst, y.shape[1])
-            quantizer_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+                # L1.append(torch.mean(torch.abs(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
+                # L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
+                y_g_hat = generator(y_mel_reconst, y.shape[1])
+                sigs_nft.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+                y_g_hat_ft = generator2(y_mel_reconst, y.shape[1])
+                sigs_ft.append(scipy.signal.resample_poly(y_g_hat_ft[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             # S comment 25032024 0900
             # y_g_hat = generator2(y_mel_reconst, y.shape[1])
             # quantizer2_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
@@ -438,22 +472,18 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             #     sig.append(scipy.signal.resample_poly(y_g_hat2[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             
             # fixed bitrate
-            # if true:
-            #     varBit = config['z_dim']
+            # for zdim, model, L1, L2, sig in zip([16,24,32,64], [bvrnn_fix_16, bvrnn_fix_24, bvrnn_fix_32, bvrnn_fix_64],
+            #                               [L1_fix_16, L1_fix_24, L1_fix_32, L1_fix_64],
+            #                               [L2_fix_16, L2_fix_24, L2_fix_32, L2_fix_64],
+            #                               [fixedBit_16_all, fixedBit_24_all, fixedBit_32_all, fixedBit_64_all]):
+            #     varBit = zdim
             #     varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
-            #     y_mel_reconst, kld = bvrnn(y_mel.permute(0, 2, 1), 1.0, False, varBit_T)
+            #     y_mel_reconst, kld = model(y_mel.permute(0, 2, 1), 1.0, True, varBit_T)
             #     y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
-            #     y_g_hat = generator(y_mel_reconst, y.shape[1])
-            #     fixedBit_32_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-            for zdim, model, L1, L2 in zip([16,24,32,64], [bvrnn_fix_16, bvrnn_fix_24, bvrnn_fix_32, bvrnn_fix_64],
-                                          [L1_fix_16, L1_fix_24, L1_fix_32, L1_fix_64],
-                                          [L2_fix_16, L2_fix_24, L2_fix_32, L2_fix_64]):
-                varBit = zdim
-                varBit_T = varBit * torch.ones(y_mel.shape[0],y_mel.shape[2]).to(device)
-                y_mel_reconst, kld = model(y_mel.permute(0, 2, 1), 1.0, False, varBit_T)
-                y_mel_reconst = y_mel_reconst.permute(0, 2, 1)
-                L1.append(torch.mean(torch.abs(y_mel[0, :, :] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
-                L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
+            #     # y_g_hat = generator(y_mel_reconst, y.shape[1])
+            #     # sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            #     L1.append(torch.mean(torch.abs(y_mel[0, :, :] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
+            #     L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
 
 
             # S comment 25032024 0900
@@ -475,10 +505,10 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
             # vocoded2_all.append(y_vocoded2)
             # vocoded3_all.append(y_vocoded3)
 
-            # # opus6_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 6))
-            # # opus8_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 8))
-            # # opus10_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 10))
-            # # opus14_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 14))
+            # opus6_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 6))
+            # opus8_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 8))
+            # opus10_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 10))
+            # opus12_all.append(10**(-10/20)*opus(10**(10/20)* y[0, :].numpy(), 48000, 12))
 
             # lyra3_2_all.append(10**(-10/20)*lyra(10**(10/20)* y[0, :].numpy(), 48000, 3200))
             # lyra6_all.append(10**(-10/20)*lyra(10**(10/20) * y[0, :].numpy(), 48000, 6000))
@@ -520,20 +550,22 @@ for sw, sigs_method in zip(sws, sigs):
     fileName = 'testResult/' + sw + '.csv'
     df.to_csv(fileName)
 
-distances = [L1_fix_16, L1_fix_24, L1_fix_32, L1_fix_64, L1_var_16, L1_var_24, L1_var_32, L1_var_64, 
-             L1_quant_16, L1_quant_24, L1_quant_32,L2_fix_16, L2_fix_24, L2_fix_32, L2_fix_64, 
-            L2_var_16, L2_var_24, L2_var_32, L2_var_64, L2_quant_16, L2_quant_24, L2_quant_32]
+# distances = [L1_fix_16, L1_fix_24, L1_fix_32, L1_fix_64, L1_var_16, L1_var_24, L1_var_32, L1_var_64, 
+#              L1_quant_16, L1_quant_24, L1_quant_32,L2_fix_16, L2_fix_24, L2_fix_32, L2_fix_64, 
+#             L2_var_16, L2_var_24, L2_var_32, L2_var_64, L2_quant_16, L2_quant_24, L2_quant_32]
 
-names = ['L1_fix_16', 'L1_fix_24', 'L1_fix_32', 'L1_fix_64', 'L1_var_16', 'L1_var_24', 'L1_var_32', 'L1_var_64', 
-             'L1_quant_16', 'L1_quant_24', 'L1_quant_32', 'L2_fix_16', 'L2_fix_24', 'L2_fix_32', 'L2_fix_64', 
-            'L2_var_16', 'L2_var_24', 'L2_var_32', 'L2_var_64', 'L2_quant_16', 'L2_quant_24', 'L2_quant_32']
+# names = ['L1_fix_16', 'L1_fix_24', 'L1_fix_32', 'L1_fix_64', 'L1_var_16', 'L1_var_24', 'L1_var_32', 'L1_var_64', 
+#              'L1_quant_16', 'L1_quant_24', 'L1_quant_32', 'L2_fix_16', 'L2_fix_24', 'L2_fix_32', 'L2_fix_64', 
+#             'L2_var_16', 'L2_var_24', 'L2_var_32', 'L2_var_64', 'L2_quant_16', 'L2_quant_24', 'L2_quant_32']
 
-df = pd.DataFrame([])
-for data, name in zip(distances, names):
-    print(name)
-    df.loc[:,name] = data
-df.loc[:,'lengths'] = lengths_all
-df.to_csv('testResult/Distances.csv')
+# distances = [L1_quant_64, L2_quant_64]
+# names = ['L1_quant_64', 'L2_quant_64']
+
+# df = pd.DataFrame([])
+# for data, name in zip(distances, names):
+#     df.loc[:,name] = data
+# df.loc[:,'lengths'] = lengths_all
+# df.to_csv('testResult/Distances_64.csv')
     
     #write to 
     # for i in test_tensorboard_examples:
