@@ -113,7 +113,7 @@ from sklearn.cluster import KMeans
 import pickle
 
 N_BITS_PER_SPLIT = 8
-N_SPLITS = 12
+N_SPLITS = 24
 
 quantizers = []
 #scale_factors = []

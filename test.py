@@ -24,13 +24,18 @@ from ptflops import get_model_complexity_info
 from bvrnn import BVRNN
 import pandas as pd
 
+
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.enabled = False
+
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 model_id = "facebook/encodec_24khz"
-vocoder_config = toml.load("pretrained_vocoder/config.toml")
-vocoder_chkpt_path = "pretrained_vocoder/g_2500000"
-vocoder_config2 = toml.load("pretrained_vocoder/config.toml")
-vocoder_chkpt_path2 = "pretrained_vocoder/vq_ft_g_3380000"
+vocoder_config = toml.load("pretrained_and_finetuned_vocoder_chkpts/config_bigvgan_causal_tiny.toml")
+vocoder_chkpt_path = "pretrained_and_finetuned_vocoder_chkpts/bigvgan_causal_tiny_g_2500000"
+vocoder_config2 = toml.load("pretrained_and_finetuned_vocoder_chkpts/config_bigvgan_causal_tiny.toml")
+vocoder_chkpt_path2 = "pretrained_and_finetuned_vocoder_chkpts/bigvgan_causal_tiny_ftvq_g_3380000"
 encodec_model = EncodecModel.from_pretrained(model_id)
 encodec_processor = AutoProcessor.from_pretrained(model_id)
 # config = toml.load("configs_coding/config_32bit.toml")
@@ -124,20 +129,20 @@ test_dataloader = DataLoader(
     0,
 )
 
-validation_dataset = SpeechDataset(
-    clean_val,
-    duration=None,
-    fs=48000,
-)
+# validation_dataset = SpeechDataset(
+#     clean_val,
+#     duration=None,
+#     fs=48000,
+# )
 
-validation_dataloader = DataLoader(
-    validation_dataset,
-    1,
-    False,
-    None,
-    None,
-    0,
-)
+# validation_dataloader = DataLoader(
+#     validation_dataset,
+#     1,
+#     False,
+#     None,
+#     None,
+#     0,
+# )
 
 
 mel_spec_config = {'n_fft': vocoder_config["winsize"],
@@ -189,46 +194,46 @@ generator2.eval()
 
 # load model 
 # variable bitrate
-bvrnn_var = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"],
-            [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], config["var_bit"]).to(device)
-script_bvrnn_var = torch.jit.script(bvrnn_var)
-chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], config["train_name"], 'checkpoints')
-os.makedirs(chkpt_dir, exist_ok=True)
-state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
-bvrnn_var.load_state_dict(state_dict_vrnn["vrnn"])
-steps = state_dict_vrnn["steps"]
-# fixed 16
-bvrnn_fix_16 = BVRNN(config["num_mels"], config["h_dim"], 16,
-                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
-script_bvrnn_16 = torch.jit.script(bvrnn_fix_16)
-chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '16bit_fixed', 'checkpoints')
-os.makedirs(chkpt_dir, exist_ok=True)
-state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
-bvrnn_fix_16.load_state_dict(state_dict_vrnn["vrnn"])
-# fixed 24
-bvrnn_fix_24 = BVRNN(config["num_mels"], config["h_dim"], 24,
-                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
-script_bvrnn_24 = torch.jit.script(bvrnn_fix_24)
-chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '24bit_fixed', 'checkpoints')
-os.makedirs(chkpt_dir, exist_ok=True)
-state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
-bvrnn_fix_24.load_state_dict(state_dict_vrnn["vrnn"])
-# fixed 32
-bvrnn_fix_32 = BVRNN(config["num_mels"], config["h_dim"], 32,
-                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
-script_bvrnn_32 = torch.jit.script(bvrnn_fix_32)
-chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '32bit_fixed', 'checkpoints')
-os.makedirs(chkpt_dir, exist_ok=True)
-state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
-bvrnn_fix_32.load_state_dict(state_dict_vrnn["vrnn"])
-# fixed 64
-bvrnn_fix_64 = BVRNN(config["num_mels"], config["h_dim"], 64,
-                [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
-script_bvrnn_64 = torch.jit.script(bvrnn_fix_64)
-chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '64bit_fixed', 'checkpoints')
-os.makedirs(chkpt_dir, exist_ok=True)
-state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
-bvrnn_fix_64.load_state_dict(state_dict_vrnn["vrnn"])
+# bvrnn_var = BVRNN(config["num_mels"], config["h_dim"], config["z_dim"],
+#             [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], config["var_bit"]).to(device)
+# script_bvrnn_var = torch.jit.script(bvrnn_var)
+# chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], config["train_name"], 'checkpoints')
+# os.makedirs(chkpt_dir, exist_ok=True)
+# state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+# bvrnn_var.load_state_dict(state_dict_vrnn["vrnn"])
+# steps = state_dict_vrnn["steps"]
+# # fixed 16
+# bvrnn_fix_16 = BVRNN(config["num_mels"], config["h_dim"], 16,
+#                 [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+# script_bvrnn_16 = torch.jit.script(bvrnn_fix_16)
+# chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '16bit_fixed', 'checkpoints')
+# os.makedirs(chkpt_dir, exist_ok=True)
+# state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+# bvrnn_fix_16.load_state_dict(state_dict_vrnn["vrnn"])
+# # fixed 24
+# bvrnn_fix_24 = BVRNN(config["num_mels"], config["h_dim"], 24,
+#                 [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+# script_bvrnn_24 = torch.jit.script(bvrnn_fix_24)
+# chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '24bit_fixed', 'checkpoints')
+# os.makedirs(chkpt_dir, exist_ok=True)
+# state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+# bvrnn_fix_24.load_state_dict(state_dict_vrnn["vrnn"])
+# # fixed 32
+# bvrnn_fix_32 = BVRNN(config["num_mels"], config["h_dim"], 32,
+#                 [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+# script_bvrnn_32 = torch.jit.script(bvrnn_fix_32)
+# chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '32bit_fixed', 'checkpoints')
+# os.makedirs(chkpt_dir, exist_ok=True)
+# state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+# bvrnn_fix_32.load_state_dict(state_dict_vrnn["vrnn"])
+# # fixed 64
+# bvrnn_fix_64 = BVRNN(config["num_mels"], config["h_dim"], 64,
+#                 [np.ones([80,]), np.zeros([80,])], config["log_sigma_init"], False).to(device)
+# script_bvrnn_64 = torch.jit.script(bvrnn_fix_64)
+# chkpt_dir = os.path.join(chkpt_log_dirs['chkpt_log_dir'], '64bit_fixed', 'checkpoints')
+# os.makedirs(chkpt_dir, exist_ok=True)
+# state_dict_vrnn = load_checkpoint(os.path.join(chkpt_dir, "latest"), device)
+# bvrnn_fix_64.load_state_dict(state_dict_vrnn["vrnn"])
 
 
 
@@ -386,8 +391,10 @@ L2_quant_64 = []
 # sws = ['clean','opus6', 'opus8', 'opus10', 'opus12','lyra3_2', 'lyra6','lyra9_2', 'encodec1_5', 'encodec3', 'encodec6', 'encodec12']
 # sigs = [clean_all, opus6_all, opus8_all, opus10_all, opus12_all, lyra3_2_all, lyra6_all, lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all]
 
-sws = ['quantizer16_val', 'quantizer24_val', 'quantizer32_val', 'quantizer64_val', 'quantizer16_ft_val', 'quantizer24_ft_val', 'quantizer32_ft_val', 'quantizer64_ft_val']
-sigs = [quant_16_all, quant_24_all, quant_32_all, quant_64_all, quant_16_ft_all, quant_24_ft_all, quant_32_ft_all, quant_64_ft_all]
+sws = ['quantizer16', 'quantizer24', 'quantizer32', 'quantizer64',
+'quantizer16_ft', 'quantizer24_ft', 'quantizer32_ft', 'quantizer64_ft']
+sigs = [quant_16_all, quant_24_all, quant_32_all, quant_64_all,
+        quant_16_ft_all, quant_24_ft_all, quant_32_ft_all, quant_64_ft_all]
 
 # sigs = [opus6_all, opus8_all, opus10_all, opus14_all, lyra3_2_all, lyra6_all,
 #          lyra9_2_all, encodec1_5_all, encodec3_all, encodec6_all, encodec12_all]
@@ -395,10 +402,10 @@ sigs = [quant_16_all, quant_24_all, quant_32_all, quant_64_all, quant_16_ft_all,
 # bitrates =
 wavPath = 'WAV/'
 
-
-
+distances_all = []
+#generator.eval()
 np.random.seed(1)
-for idx,(y,) in enumerate(tqdm.tqdm(validation_dataloader)):
+for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
     if idx in test_test_examples:
         with torch.no_grad():
             clean_all.append(y[0, :].numpy())
@@ -444,16 +451,22 @@ for idx,(y,) in enumerate(tqdm.tqdm(validation_dataloader)):
                 # L1.append(torch.mean(torch.abs(y_mel[0, :, :] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
                 # L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
                 # sig.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-            for layers, sigs_nft, sigs_ft in zip([6,9,12,24],[quant_16_all, quant_24_all, quant_32_all, quant_64_all], 
-                                             [quant_16_ft_all, quant_24_ft_all, quant_32_ft_all, quant_64_ft_all]):
+            distances = []
+            for layers, sigs_nft, sigs_ft in zip([6, 8, 12, 24],[quant_16_all,quant_24_all,quant_32_all,quant_64_all], 
+                                             [quant_16_ft_all,quant_24_ft_all,quant_32_ft_all,quant_64_ft_all]):
+                
+                #layers = 24#np.random.randint(24) + 1
                 y_mel_reconst = quantizer_encode_decode(y_mel[0, :, :].cpu().numpy().T, layers)
+                distance = np.mean(np.abs(y_mel[0, :, :y_mel_reconst.shape[0]].cpu().numpy().T - y_mel_reconst))
+                distances.append(distance)
                 y_mel_reconst = torch.from_numpy(y_mel_reconst[None, :, :].astype('float32')).permute(0, 2, 1).to(device)
                 # L1.append(torch.mean(torch.abs(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :])).detach().cpu().numpy() * 20 / np.log(10))
                 # L2.append(torch.sqrt(torch.mean(torch.pow(y_mel[0, :, :y_mel_reconst.shape[2]] - y_mel_reconst[0, :, :],2))).detach().cpu().numpy() * 20 / np.log(10))
-                y_g_hat = generator(y_mel_reconst, y.shape[1])
+                y_g_hat = generator(y_mel_reconst, y_resampled.shape[0])
                 sigs_nft.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
-                y_g_hat_ft = generator2(y_mel_reconst, y.shape[1])
-                sigs_ft.append(scipy.signal.resample_poly(y_g_hat_ft[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+                y_g_hat_ft = generator2(y_mel_reconst, y_resampled.shape[0])
+                sigs_ft.append(y[0, :].cpu().numpy())#scipy.signal.resample_poly(y_g_hat_ft[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+            distances_all.append(distances[0])
             # S comment 25032024 0900
             # y_g_hat = generator2(y_mel_reconst, y.shape[1])
             # quantizer2_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
@@ -549,6 +562,7 @@ for sw, sigs_method in zip(sws, sigs):
     df.loc[:, 'lengths'] = lengths_all
     fileName = 'testResult/' + sw + '.csv'
     df.to_csv(fileName)
+
 
 # distances = [L1_fix_16, L1_fix_24, L1_fix_32, L1_fix_64, L1_var_16, L1_var_24, L1_var_32, L1_var_64, 
 #              L1_quant_16, L1_quant_24, L1_quant_32,L2_fix_16, L2_fix_24, L2_fix_32, L2_fix_64, 
