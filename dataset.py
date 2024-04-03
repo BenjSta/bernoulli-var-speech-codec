@@ -1,3 +1,5 @@
+LEGACY = False
+
 import numpy as np
 import soundfile
 import scipy.signal
@@ -5,6 +7,7 @@ from torch.utils import data
 import torch
 import os
 import glob
+
 
 def load_paths(dns4_root_datasets_fullband, vctk_txt_root):
     VOCALSET_PATH = os.path.join(dns4_root_datasets_fullband, "clean_fullband/VocalSet_48kHz_mono")
@@ -71,13 +74,14 @@ def load_paths(dns4_root_datasets_fullband, vctk_txt_root):
 
 def load_speech_sample(
                 speech_filepath, fs,
-                duration):
+                duration_in):
   
-    if duration == None:
+    if duration_in == None:
         s, fs_speech = soundfile.read(speech_filepath, dtype='float32')
         duration = s.shape[0] / fs_speech
         target_len = int(np.floor(duration * fs))
     else:
+        duration = duration_in
         target_len = int(np.floor(fs * duration)) 
         speech_info = soundfile.info(speech_filepath)
         speech_len = speech_info.frames
@@ -93,12 +97,20 @@ def load_speech_sample(
     if s.shape[0] < target_len:
         pad_len = target_len - s.shape[0]
         pad_before = np.random.randint(pad_len)
+
         pad_after = pad_len - pad_before
-        s = np.pad(s, (pad_before, pad_after))
+        if LEGACY:
+            s = np.pad(s, (pad_before, pad_after))
+            has10dBpad = False
+        else:
+            s =  10 ** (-10/20) * np.pad(s, (pad_before, pad_after))
+            has10dBpad = True
+       
     else:
         s = 10 ** (-10/20) * s[:target_len]
+        has10dBpad = True
 
-    return s.astype('float32')
+    return s.astype('float32'), has10dBpad
             
 class SpeechDataset(data.Dataset):
     def __init__(self,
@@ -118,6 +130,6 @@ class SpeechDataset(data.Dataset):
     def __getitem__(self, item):
         speech_filepath = self.speech_filepath_list[item]
 
-        s = load_speech_sample(speech_filepath, self.fs, self.duration)
+        s, has_10db_pad = load_speech_sample(speech_filepath, self.fs, self.duration)
         return (s,)
 
