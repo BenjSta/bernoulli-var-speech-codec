@@ -465,7 +465,7 @@ for idx,(y,) in enumerate(tqdm.tqdm(test_dataloader)):
                 y_g_hat = generator(y_mel_reconst, y_resampled.shape[0])
                 sigs_nft.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
                 y_g_hat_ft = generator2(y_mel_reconst, y_resampled.shape[0])
-                sigs_ft.append(y[0, :].cpu().numpy())#scipy.signal.resample_poly(y_g_hat_ft[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
+                sigs_ft.append(scipy.signal.resample_poly(y_g_hat_ft[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             distances_all.append(distances[0])
             # S comment 25032024 0900
             # y_g_hat = generator2(y_mel_reconst, y.shape[1])
