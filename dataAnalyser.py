@@ -17,7 +17,7 @@ def calcMedMeanInter(data, metric,):
 
 def singleErrorBar(data, metric, x,color, marker):
     mean, median, inter25, inter75 = calcMedMeanInter(data, metric)
-    return plt.errorbar(x, mean, yerr = np.array([[median-inter25], [inter75-median]]),color=color, capsize=3, fmt=marker)
+    return plt.errorbar(x, median, yerr = np.array([[median-inter25], [inter75-median]]),color=color, capsize=3, fmt=marker)
 #    plt.text(x + 0.2, median - 0.2, name, fontsize=8)
 
 def medianTrend(plotData, metric, x, color, distance=False):
@@ -80,14 +80,6 @@ def main():
     quant_32_ft = pd.read_csv('testResult/quantizer32_ft.csv', index_col=0)
     quant_64_ft = pd.read_csv('testResult/quantizer64_ft.csv', index_col=0)
 
-    quant_16_nft_val = pd.read_csv('testResult/quantizer16_val.csv', index_col=0)
-    quant_24_nft_val = pd.read_csv('testResult/quantizer24_val.csv', index_col=0)
-    quant_32_nft_val = pd.read_csv('testResult/quantizer32_val.csv', index_col=0)
-    quant_64_nft_val = pd.read_csv('testResult/quantizer64_val.csv', index_col=0)
-    quant_16_ft_val = pd.read_csv('testResult/quantizer16_ft_val.csv', index_col=0)
-    quant_24_ft_val = pd.read_csv('testResult/quantizer24_ft_val.csv', index_col=0)
-    quant_32_ft_val = pd.read_csv('testResult/quantizer32_ft_val.csv', index_col=0)
-    quant_64_ft_val = pd.read_csv('testResult/quantizer64_ft_val.csv', index_col=0)
 
     # data = [clean, vocoded, encodec1_5, encodec3, encodec6, encodec12,
     #        lyra3_2, lyra6, lyra9_2, opus6, opus10, opus14, variable8,
@@ -125,8 +117,8 @@ def main():
 
     ## vergleich normal zu fine tuned
 
-    # plot_array = [quant_16_nft, quant_16_ft, quant_24_nft, quant_24_ft, quant_32_nft, quant_32_ft, quant_64_nft, quant_64_ft]
-    plot_array = [quant_16_nft_val, quant_16_ft_val, quant_24_nft_val, quant_24_ft_val, quant_32_nft_val, quant_32_ft_val, quant_64_nft_val, quant_64_ft_val]
+    plot_array = [quant_16_nft, quant_16_ft, quant_24_nft, quant_24_ft, quant_32_nft, quant_32_ft, quant_64_nft, quant_64_ft]
+    # plot_array = [quant_16_nft_val, quant_16_ft_val, quant_24_nft_val, quant_24_ft_val, quant_32_nft_val, quant_32_ft_val, quant_64_nft_val, quant_64_ft_val]
     color_array = ['blue', 'blue', 'blue', 'blue', 'red', 'red', 'red', 'red']
     kbps = [1.38, 2.07, 2.76, 5.51, 1.38, 2.07, 2.76, 5.51]
     metric = 'nisqa_mos48'
@@ -146,7 +138,33 @@ def main():
     plt.xlabel('bitrate in kbps')
     plt.xticks([1.38, 2.07, 2.76, 5.51])
     plt.grid()
-    plt.savefig(metric +'_val_vq_comp' '.png')
+    plt.savefig(metric +'_vq_comp' '.png')
+
+    metric = 'pesq'
+    plt.figure(dpi=300)
+    for data, color, bit in zip(plot_array, color_array, kbps):
+        singleErrorBar(data, metric, bit, color, 'o')
+    h1 = medianTrend(plot_array[0:4], metric, kbps[0:4], 'blue')
+    h2 = medianTrend(plot_array[4:8], metric, kbps[4:8], 'red')
+    plt.xlim([1,6.5])
+    plt.ylabel('PESQ')
+    plt.xlabel('bitrate in kbps')
+    plt.xticks([1.38, 2.07, 2.76, 5.51])
+    plt.grid()
+    plt.savefig(metric +'_vq_comp' '.png')
+
+    metric = 'visqol'
+    plt.figure(dpi=300)
+    for data, color, bit in zip(plot_array, color_array, kbps):
+        singleErrorBar(data, metric, bit, color, 'o')
+    h1 = medianTrend(plot_array[0:4], metric, kbps[0:4], 'blue')
+    h2 = medianTrend(plot_array[4:8], metric, kbps[4:8], 'red')
+    plt.xlim([1,6.5])
+    plt.ylabel('ViSQOL')
+    plt.xlabel('bitrate in kbps')
+    plt.xticks([1.38, 2.07, 2.76, 5.51])
+    plt.grid()
+    plt.savefig(metric +'_vq_comp' '.png')
     
 
     # # distance plot
@@ -181,10 +199,6 @@ def main():
     # # export_legend(legend)
     # # plt.show()
     # plt.savefig('L1.png')
-
-
-
-
 
 
 if __name__ == "__main__":
