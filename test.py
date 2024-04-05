@@ -432,11 +432,11 @@ for idx, (y,) in enumerate(tqdm.tqdm(test_dataloader)):
                                         None, :], **mel_spec_config_sym)
 
             y_g_hat = generator(y_mel, y_resampled.shape[0])
-            vocoded_all.append(y_g_hat[0, 0, :].detach().cpu().numpy())
+            vocoded_all.append(scipy.signal.resample_poly(y_g_hat[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             y_g_hat_big = generator_big(y_mel, y_resampled.shape[0])
-            vocoded_big_all.append(y_g_hat_big[0, 0, :].detach().cpu().numpy())
+            vocoded_big_all.append(scipy.signal.resample_poly(y_g_hat_big[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
             y_g_hat_bigsym = generator_bigsym(y_mel_sym, y_resampled.shape[0])
-            vocoded_bigsym_all.append(y_g_hat_bigsym[0, 0, :].detach().cpu().numpy())
+            vocoded_bigsym_all.append(scipy.signal.resample_poly(y_g_hat_bigsym[0, 0, :].detach().cpu().numpy(), 48000, config['fs']))
 
             # variable bitrate
             for varBit, sig, sigft, sigbig, sigbigsym, L1, L2 in zip(
