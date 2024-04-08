@@ -186,10 +186,10 @@ def main():
                    quant_16_nft, quant_24_nft, quant_32_nft, quant_64_nft,
                    quant_16_ft, quant_24_ft, quant_32_ft, quant_64_ft]
     color_array = ['darkgreen', 'darkgreen', 'darkgreen', 'darkgreen',
-                   'darkviolet', 'darkviolet', 'darkviolet', 'darkviolet', 
                    'violet', 'violet', 'violet', 'violet',
-                    'black', 'black', 'black', 'black',
-                    'grey', 'grey', 'grey', 'grey']
+                    'darkviolet', 'darkviolet', 'darkviolet', 'darkviolet', 
+                    'grey', 'grey', 'grey', 'grey',
+                    'black', 'black', 'black', 'black']
     kbps = (np.array([[1.38, 2.07, 2.76, 4]]) + np.linspace(-0.15, 0.15, 5, endpoint=True)[:, None]).flatten()
     marker = ['o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o', 'o']
     for metric, metricname in zip(['nisqa_mos48', 'visqol',  'pesq'], ['NISQA', 'ViSQOL', 'PESQ']):
@@ -199,10 +199,10 @@ def main():
         for data, color, bit in zip(plot_array, color_array, kbps):
             m.append(singleErrorBar(data, metric, bit, color, 'o', markers=4.0))
         h1 = medianTrend(plot_array[0:4], metric, kbps[0:4], 'darkgreen')
-        h2 = medianTrend(plot_array[4:8], metric, kbps[4:8], 'darkviolet')
-        h2 = medianTrend(plot_array[8:12], metric, kbps[8:12], 'violet')
-        h3 = medianTrend(plot_array[12:16], metric, kbps[12:16], 'black')
-        h4 = medianTrend(plot_array[16:20], metric, kbps[16:20], 'grey')
+        h2 = medianTrend(plot_array[4:8], metric, kbps[4:8], 'violet')
+        h2 = medianTrend(plot_array[8:12], metric, kbps[8:12], 'darkviolet')
+        h3 = medianTrend(plot_array[12:16], metric, kbps[12:16], 'grey')
+        h4 = medianTrend(plot_array[16:20], metric, kbps[16:20], 'black')
         plt.xlim([1.1, 4.28])
         plt.yticks(fontsize=FONTSIZE1)
         plt.ylabel(metricname, fontsize=FONTSIZE1)
@@ -230,7 +230,7 @@ def main():
     
     ###############################################################################################
     ## C - Effect of Vocoder Complexity and Causality 
-    plot_array = [ variable_16, variable_24, variable_32, variable_64,
+    plot_array = [ variable_16_ft, variable_24_ft, variable_32_ft, variable_64_ft,
                    variable_16_big, variable_24_big, variable_32_big, variable_64_big,
                    variable_16_bigsym, variable_24_bigsym, variable_32_bigsym, variable_64_bigsym,
                    causal_vocoder, causal_big_vocoder, non_causal_vocoder]
@@ -268,7 +268,7 @@ def main():
     if savefigure:
         plt.figure()
         legend = plt.legend([m[0][0], m[4][0], m[8][0]], 
-                             ['BigVGAN-tiny-causal', 'BigVGAN-base-causal', 'BigVGAN-base'],
+                             ['BigVGAN-tiny-causal (fine-tuned)', 'BigVGAN-base-causal', 'BigVGAN-base'],
                                loc='upper center', bbox_to_anchor=(0.5, -0.15), frameon=False, ncol=3)
         export_legend(legend, 'C_Legend')
 
@@ -281,7 +281,7 @@ def main():
     plot_array = [encodec1_5, encodec3, encodec6, encodec12, 
                   lyra3_2, lyra6, lyra9_2, 
                   opus6, opus8, opus10, opus12, 
-                  variable_16, variable_24, variable_32, variable_64,
+                  variable_16_ft, variable_24_ft, variable_32_ft, variable_64_ft,
                   variable_16_big, variable_24_big, variable_32_big, variable_64_big]
     color_array = ['blue', 'blue', 'blue', 'blue', 'darkorange', 'darkorange' ,'darkorange', 'orangered', 'orangered', 'orangered', 'orangered', 
                    'darkviolet', 'darkviolet', 'darkviolet', 'darkviolet', 'violet', 'violet', 'violet', 'violet']
@@ -322,7 +322,7 @@ def main():
                             ['EnCodec', 'Lyra v2', 'Opus',
                              'prop. variable bitrate BigVGAN-tiny-causal fine-tuned',
                              'prop. variable bitrate BigVGAN-base-causal' ],
-                             loc='center left', bbox_to_anchor=(1, 0.5), frameon=False, ncol=5)
+                             loc='center left', bbox_to_anchor=(1, 0.5), frameon=False, ncol=1)
         export_legend(legend, 'D_Legend')
 
     # metric = 'pesq'
