@@ -35,7 +35,7 @@ vocoder_config = toml.load(
 vocoder_config_attr_dict = AttrDict(vocoder_config)
 
 vocoder_chkpt_path = "pretrained_and_finetuned_vocoder_chkpts/bigvgan_causal_tiny_g_2500000"
-vocoder_chkpt_path_ft = "pretrained_and_finetuned_vocoder_chkpts/bigvgan_causal_tiny_ftbvrnn_g_2860000"
+vocoder_chkpt_path_ft = "pretrained_and_finetuned_vocoder_chkpts/bigvgan_causal_tiny_ftbvrnn_g_3500000"
 vocoder_chkpt_path_ftvq = "pretrained_and_finetuned_vocoder_chkpts/bigvgan_causal_tiny_ftvq_g_3380000"
 
 
@@ -420,7 +420,7 @@ distances_all = []
 # generator.eval()
 np.random.seed(1)
 for idx, (y,) in enumerate(tqdm.tqdm(test_dataloader)):
-    if idx in test_test_examples:
+    if idx in test_test_examples or True:
         with torch.no_grad():
             clean_all.append(y[0, :].numpy())
             y_resampled = scipy.signal.resample_poly(
