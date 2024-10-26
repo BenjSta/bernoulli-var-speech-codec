@@ -1,4 +1,5 @@
-LEGACY = False
+LEGACY = True
+LEGACY_CORRECT = True
 
 import numpy as np
 import soundfile
@@ -99,16 +100,23 @@ def load_speech_sample(
         pad_before = np.random.randint(pad_len)
 
         pad_after = pad_len - pad_before
-        if LEGACY:
-            s = np.pad(s, (pad_before, pad_after))
-            has10dBpad = False
-        else:
-            s =  10 ** (-10/20) * np.pad(s, (pad_before, pad_after))
+        
+        s = np.pad(s, (pad_before, pad_after))
+        
+        if LEGACY_CORRECT:
+            s = 10 ** (-10/20) * s[:target_len]
             has10dBpad = True
-       
+        else:
+            has10dBpad = False
     else:
-        s = 10 ** (-10/20) * s[:target_len]
-        has10dBpad = True
+        if LEGACY or LEGACY_CORRECT:
+            s = 10 ** (-10/20) * s[:target_len]
+            has10dBpad = True
+        else:
+            s = s[:target_len]
+            has10dBpad = False
+        
+       
 
     return s.astype('float32'), has10dBpad
             

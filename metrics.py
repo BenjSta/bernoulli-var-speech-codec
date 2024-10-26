@@ -14,23 +14,27 @@ import subprocess
 from torchaudio.pipelines import SQUIM_OBJECTIVE, SQUIM_SUBJECTIVE
 from joblib import Parallel, delayed
 from third_party.NISQA.nisqa.NISQA_model import nisqaModel
+import pyworld
+
 
 def mcd_core(ref, sig, fs):
     mcd_toolbox = Calculate_MCD(MCD_mode="plain")
     with tempfile.NamedTemporaryFile(suffix='.wav') as reffile, tempfile.NamedTemporaryFile(suffix='.wav') as sigfile:
         refname = reffile.name
         signame = sigfile.name
-    
+
         soundfile.write(refname, ref, fs)
         soundfile.write(sigfile, sig, fs)
 
         mcdval = mcd_toolbox.calculate_mcd(refname, signame)
     return mcdval
 
-def compute_mcd(list_of_refs, list_of_signals, fs, num_workers = 10):
+
+def compute_mcd(list_of_refs, list_of_signals, fs, num_workers=10):
     pbar = tqdm.tqdm(zip(list_of_refs, list_of_signals))
     pbar.set_description("Computing MCD...")
-    mcdvals = Parallel(n_jobs=num_workers)(delayed(mcd_core)(r, s, fs) for (r, s) in pbar)
+    mcdvals = Parallel(n_jobs=num_workers)(
+        delayed(mcd_core)(r, s, fs) for (r, s) in pbar)
     return np.array(mcdvals)
 
 
@@ -50,6 +54,7 @@ def compute_pesq(list_of_refs, list_of_signals, fs):
 
     return np.array(pesqvals)
 
+
 def compute_estimated_metrics(list_of_refs, list_of_signals, fs, device='cuda'):
     # load torchaudio SQUIM
     # https://pytorch.org/audio/main/tutorials/squim_tutorial.html#sphx-glr-tutorials-squim-tutorial-py
@@ -66,7 +71,8 @@ def compute_estimated_metrics(list_of_refs, list_of_signals, fs, device='cuda'):
     pbar.set_description("Computing SQUIM...")
 
     for r, s in pbar:
-        stoi, pesq, sisdr = objective_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to(device)[None, :])
+        stoi, pesq, sisdr = objective_model(torch.from_numpy(
+            scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)).to(device)[None, :])
         mos = subjective_model(torch.from_numpy(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs).astype('float32')).to(device)[None, :],
                                torch.from_numpy(scipy.signal.resample_poly(r / np.max(np.abs(r)), 16000, fs).astype('float32')).to(device)[None, :])
         squim_stoi.append(stoi[0].cpu().detach().numpy())
@@ -77,11 +83,13 @@ def compute_estimated_metrics(list_of_refs, list_of_signals, fs, device='cuda'):
 
     return (np.array(squim_stoi), np.array(squim_pesq), np.array(squim_sisdr), np.array(squim_mos))
 
+
 def compute_nisqa(list_of_signals, fs):
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, s in enumerate(list_of_signals):
             soundfile.write(
-                os.path.join(tmpdir, ("%d"%i).zfill(len('%d'%(len(list_of_signals)-1))) + '.wav'),
+                os.path.join(tmpdir, ("%d" % i).zfill(
+                    len('%d' % (len(list_of_signals)-1))) + '.wav'),
                 scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs),
                 16000,
             )
@@ -104,7 +112,8 @@ def compute_nisqa(list_of_signals, fs):
     with tempfile.TemporaryDirectory() as tmpdir:
         for i, s in enumerate(list_of_signals):
             soundfile.write(
-                os.path.join(tmpdir, ("%d"%i).zfill(len('%d'%(len(list_of_signals)-1))) + '.wav'),
+                os.path.join(tmpdir, ("%d" % i).zfill(
+                    len('%d' % (len(list_of_signals)-1))) + '.wav'),
                 scipy.signal.resample_poly(s / np.max(np.abs(s)), 48000, fs),
                 48000,
             )
@@ -123,19 +132,19 @@ def compute_nisqa(list_of_signals, fs):
             'tr_num_workers': 0
         })
         df48k = nisqa.predict()
-    
+
     order16k = np.argsort(np.array(df16k['deg']))
     order48k = np.argsort(np.array(df48k['deg']))
 
-    return (np.array(df16k['mos_pred'])[order16k], 
-            np.array(df16k['noi_pred'])[order16k], 
-            np.array(df16k['dis_pred'])[order16k], 
-            np.array(df16k['col_pred'])[order16k], 
+    return (np.array(df16k['mos_pred'])[order16k],
+            np.array(df16k['noi_pred'])[order16k],
+            np.array(df16k['dis_pred'])[order16k],
+            np.array(df16k['col_pred'])[order16k],
             np.array(df16k['loud_pred'])[order16k],
-            np.array(df48k['mos_pred'])[order48k], 
-            np.array(df48k['noi_pred'])[order48k], 
-            np.array(df48k['dis_pred'])[order48k], 
-            np.array(df48k['col_pred'])[order48k], 
+            np.array(df48k['mos_pred'])[order48k],
+            np.array(df48k['noi_pred'])[order48k],
+            np.array(df48k['dis_pred'])[order48k],
+            np.array(df48k['col_pred'])[order48k],
             np.array(df48k['loud_pred'])[order48k])
 
 
@@ -153,7 +162,8 @@ def compute_dnsmos(list_of_signals, fs):
     pbar.set_description("Computing DNSMOS...")
 
     for s in pbar:
-        d = dnsmos_obj(scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs))
+        d = dnsmos_obj(scipy.signal.resample_poly(
+            s / np.max(np.abs(s)), 16000, fs))
         dnsmos_ovrl.append(d["OVRL"])
         dnsmos_bak.append(d["SIG"])
         dnsmos_sig.append(d["BAK"])
@@ -166,7 +176,7 @@ def compute_mean_wacc(list_of_signals, list_of_texts, fs, device):
     list_of_transcripts = []
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    asr_model = whisper.load_model("medium.en", device = device)
+    asr_model = whisper.load_model("medium.en", device=device)
     pbar = tqdm.tqdm(list_of_signals)
     pbar.set_description("Computing Wacc...")
 
@@ -176,17 +186,21 @@ def compute_mean_wacc(list_of_signals, list_of_texts, fs, device):
                 scipy.signal.resample_poly(s / np.max(np.abs(s)), 16000, fs)
             )["text"]
         )
-    norm_list_of_transcripts = [' ' if i =='' else i for i in norm_text(list_of_transcripts)]
+    norm_list_of_transcripts = [
+        ' ' if i == '' else i for i in norm_text(list_of_transcripts)]
 
     return 1 - compute_wer(norm_text(list_of_texts), norm_list_of_transcripts)
 
-def compute_visqol(visqol_base, visqol_exe, list_of_refs, list_of_signals, fs, num_workers = 10):
+
+def compute_visqol(visqol_base, visqol_exe, list_of_refs, list_of_signals, fs, num_workers=10):
     visqol_results = []
     pbar = tqdm.tqdm(zip(list_of_refs, list_of_signals))
     pbar.set_description("Computing Visqol...")
-    visqol_results = Parallel(n_jobs=num_workers)(delayed(visqolCore)(r, s, fs, visqol_base, visqol_exe) for (r, s) in pbar)
-    
+    visqol_results = Parallel(n_jobs=num_workers)(delayed(visqolCore)(
+        r, s, fs, visqol_base, visqol_exe) for (r, s) in pbar)
+
     return np.array(visqol_results)
+
 
 def visqolCore(ref, sig, fs, visqol_base, visqol_executable):
     with tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as reffile, tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as sigfile:
@@ -200,4 +214,43 @@ def visqolCore(ref, sig, fs, visqol_base, visqol_executable):
             visqol_executable, reffile.name, sigfile.name), shell=True, stderr=subprocess.DEVNULL)
         os.chdir(cwd)
     return float(retval.decode().split('\t')[-1])
- 
+
+
+def F0_RMSECore(ref, sig, fs):
+    # yin_frame_length = int(2048/22050*fs)
+    f0_ref, _ = pyworld.harvest(ref.astype(np.double), fs, frame_period=10)
+    f0_sig, _ = pyworld.harvest(sig.astype(np.double), fs, frame_period=10)
+    minlen = min(len(f0_ref), len(f0_sig))
+    if len(f0_ref) != len(f0_sig):
+        print("Warning: F0 length mismatch, truncating to minimum length, ref: %d, sig: %d" % (
+            len(f0_ref), len(f0_sig)), flush=True)
+    
+    f0_ref = f0_ref[:minlen]
+    f0_sig = f0_sig[:minlen]
+
+    # f0_ref, voiced, _ = librosa.pyin(ref, fmin=60, fmax=400, sr=fs, frame_length=yin_frame_length)
+    # f0_sig, _, _ = librosa.pyin(sig, fmin=60, fmax=400, sr=fs, frame_length=yin_frame_length, fill_na=None)
+
+    voiced_accuracy = 1 - np.mean(np.abs((f0_ref > 0).astype('float32') -
+                           (f0_sig > 0).astype('float32')))
+
+    both_voiced = (f0_ref > 0) & (f0_sig > 0)
+    f0_ref = f0_ref[both_voiced]
+    f0_sig = f0_sig[both_voiced]
+
+    f0_semitones_ref = 12*np.log2(f0_ref)
+    f0_semitones_sig = 12*np.log2(f0_sig)
+
+
+    return np.sqrt(np.mean((f0_semitones_ref - f0_semitones_sig)**2)), voiced_accuracy
+
+
+def compute_f0_rmse(list_of_refs, list_of_signals, fs):
+    f0_rmse = []
+    pbar = tqdm.tqdm(zip(list_of_refs, list_of_signals))
+    pbar.set_description("Computing F0 RMSE...")
+    f0_rmse_voiced_acc = Parallel(n_jobs=10)(
+        delayed(F0_RMSECore)(r, s, fs) for (r, s) in pbar)
+    f0_rmse = [f[0] for f in f0_rmse_voiced_acc]
+    voiced_acc = [f[1] for f in f0_rmse_voiced_acc]
+    return f0_rmse, voiced_acc

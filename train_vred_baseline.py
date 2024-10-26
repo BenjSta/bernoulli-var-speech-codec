@@ -15,6 +15,7 @@ import torch
 from third_party.BigVGAN.meldataset import mel_spectrogram
 from collections import OrderedDict
 from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics, compute_visqol
+import matplotlib.pyplot as plt
 
 from third_party.BigVGAN.models import (
     BigVGAN
@@ -29,9 +30,59 @@ warnings.simplefilter(action="ignore", category=FutureWarning)
 
 
 # LOAD CONFIG
-config = toml.load("configs_coding/config_varBitRate.toml")
+config = toml.load("configs_coding/config_vred_fixed4.toml")
 vocoder_config_attr_dict = AttrDict(config['vocoder_config'])
 os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+
+
+dft_matrix = np.exp(-1j * 2 * np.pi * np.outer((config['winsize'] / 2) / (config['num_kernels'] // 2) * 
+                                              (np.arange(config['num_kernels'] // 2) + 0.5),
+                                              np.arange(config['winsize'])) / config['winsize']) / np.sqrt(config['winsize'] * (config['num_kernels'] / 2) / config['winsize'])
+dft_matrix = dft_matrix * np.sqrt(np.hanning(config['winsize']))[None, :]
+idft_matrix = np.concatenate([dft_matrix.real, -dft_matrix.imag], axis=0)
+dft_matrix = np.concatenate([dft_matrix.real, dft_matrix.imag], axis=0)
+filterbank = torch.nn.Parameter(torch.from_numpy(dft_matrix).float().to('cuda'))
+
+
+bin = 15
+plt.figure()
+plt.plot(dft_matrix[[bin, 16 + bin], :].T)
+plt.show()
+plt.savefig('dft_matrix.png')
+
+plt.figure()
+sig = torch.randn(22 * 1000).to('cuda')
+sigspec  = 20 * torch.log10(torch.abs(torch.stft(sig[None, :], n_fft=1024, hop_length=256, win_length=1024, window=torch.hann_window(1024).to('cuda'), center=False, pad_mode='constant', return_complex=True)))
+
+transf = torch.nn.functional.conv1d(sig[None, None, :], filterbank[:, None, :], stride=config["hopsize"], padding=config['winsize'] // 2)
+recon = torch.nn.functional.conv_transpose1d(transf, filterbank[:, None, :], stride=config["hopsize"], padding=config['winsize'] // 2)
+
+reconspec  = 20 * torch.log10(torch.abs(torch.stft(recon[0, :], n_fft=1024, hop_length=256, win_length=1024, window=torch.hann_window(1024).to('cuda'), center=False, pad_mode='constant', return_complex=True)))
+
+
+
+
+plt.plot(sig.detach().cpu().numpy())
+plt.plot(recon[0, 0, :].detach().cpu().numpy())
+plt.show()
+plt.savefig('recon.png')
+
+
+plt.figure()
+plt.pcolormesh(sigspec[0, ...].detach().cpu().numpy(), vmin=-30, vmax=50)
+plt.show()
+plt.savefig('sigspec.png')
+
+plt.figure()
+plt.pcolormesh(reconspec[0, ...].detach().cpu().numpy(), vmin=-30, vmax=50)
+plt.show()
+plt.savefig('reconspec.png')
+
+
+
+sdr = 10 * torch.log10(torch.mean(sig**2) / torch.mean((sig - recon[0, 0, :])**2))
+print(sdr)
+
 
 try:
     chkpt_log_dirs = toml.load('chkpt_log_dirs.toml')
@@ -76,14 +127,7 @@ trainset = SpeechDataset(
     fs=config["fs"],
 )
 
-mel_spec_config = {'n_fft': config["winsize"],
-                   'num_mels': config["num_mels"],
-                   'sampling_rate': config["fs"],
-                   'hop_size': config["hopsize"],
-                   'win_size': config["winsize"],
-                   'fmin': config["fmin"],
-                   'fmax': config["fmax"],
-                   'padding_left': config["mel_pad_left"]}
+
 
 np.random.seed(1)
 scaler_mel_y = StandardScaler()
@@ -118,9 +162,9 @@ generator = BigVGAN(vocoder_config_attr_dict).to(device)
 print("Generator params: {}".format(sum(p.numel()
       for p in generator.parameters())))
 
-#state_dict_g = load_checkpoint(config['vocoder_checkpoint'], device)
+state_dict_g = load_checkpoint(config['vocoder_checkpoint'], device)
 
-#generator.load_state_dict(state_dict_g["generator"])
+generator.load_state_dict(state_dict_g["generator"])
 generator.eval()
 print(generator)
 

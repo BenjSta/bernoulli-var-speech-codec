@@ -1,4 +1,11 @@
 import toml
+import os
+
+# LOAD CONFIG
+config = toml.load("configs_vocoder_training/config_vocoder_non_causal_snake_bigger.toml")
+os.environ["CUDA_VISIBLE_DEVICES"] = config["cuda_visible_devices"]
+
+
 import whisper
 from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd
 from third_party.BigVGAN.env import AttrDict
@@ -9,12 +16,14 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 import scipy.signal
 import tqdm
-import os
 import itertools
 from ptflops import get_model_complexity_info
 import torch
 from third_party.BigVGAN.meldataset import mel_spectrogram
 from collections import OrderedDict
+
+
+config_attr_dict = AttrDict(config)
 
 from third_party.BigVGAN.models import (
     BigVGAN,
@@ -26,29 +35,26 @@ from third_party.BigVGAN.models import (
 )
 
 from third_party.BigVGAN.utils import load_checkpoint, save_checkpoint
-from dataset import NoisySpeechDataset, load_paths
+import dataset
+from dataset import SpeechDataset, load_paths
 import warnings
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
 torch.backends.cudnn.benchmark = True
 
-# LOAD CONFIG
-config = toml.load("configs/config_vocoder_bigvgan_base.toml")
-config_attr_dict = AttrDict(config)
-os.environ["CUDA_VISIBLE_DEVICES"] = config["cuda_visible_devices"]
+
 
 if torch.cuda.is_available():
     device = "cuda"
 else:
     device = "cpu"
 
-pathconfig = toml.load("directories.toml")
+chkpt_log_config = toml.load("chkpt_log_dirs.toml")
+pathconfig = toml.load("data_directories.toml")
 paths = load_paths(pathconfig["DNS4_root"], pathconfig["VCTK_txt_root"])
 clean_train, clean_val, _ = paths["clean"]
 _, txt_val, _ = paths["txt"]
-noise_train, noise_val, _ = paths["noise"]
-rir_train, rir_val, _ = paths["rir"]
 
 
 np.random.seed(1)
@@ -56,19 +62,8 @@ val_tensorboard_examples = np.random.choice(len(clean_val), 15, replace=False)
 np.random.seed()
 
 
-asr_model = whisper.load_model("medium.en")
-
-
-trainset = NoisySpeechDataset(
-    clean_train,
-    noise_train,
-    rir_train,
-    duration=config["train_seq_duration"],
-    snr_mu_and_sigma=(5, 10),
-    apply_noise=False,
-    rir_percentage=0.75,
-    fs=22050,
-)
+trainset = SpeechDataset(
+    clean_train, duration=config["train_seq_duration"], fs=config["fs"])
 
 if platform.system() == "Linux":
     def numpy_random_seed(ind=None):
@@ -111,7 +106,7 @@ print(generator)
 
 
 chkpt_dir = os.path.join(
-    config["chkpt_log_dir"], "checkpoints", config["train_name"])
+    chkpt_log_config['chkpt_log_dir'], "vocoder", "checkpoints", config["train_name"])
 os.makedirs(chkpt_dir, exist_ok=True)
 
 
@@ -139,51 +134,35 @@ if config["resume"]:
     mrd.load_state_dict(state_dict_do["mrd"])
     steps = state_dict_do["steps"]
 
-if "hifigan_chkpt" in config:
-    assert config['validate_only'], 'HifiGAN checkpoint only for validation'
-
-    state_dict_g = load_checkpoint(config["hifigan_chkpt"], device)
-
-    state_dict_g["generator"] = OrderedDict(
-        (k[len("module."):] if ("module." in k) else k, v)
-        for k, v in state_dict_g["generator"].items()
-    )
-
-    state_dict_g["generator"] = OrderedDict(
-        ((k[:5] + ".1" + k[7:]) if ("ups." in k) else k, v)
-        for k, v in state_dict_g["generator"].items()
-    )
-    generator.load_state_dict(state_dict_g["generator"])
-
+# macs, params = get_model_complexity_info(
+#     generator,
+#     (1 * 82,),
+#     input_constructor=constr,
+#     as_strings=False,
+#     print_per_layer_stat=True,
+#     verbose=True,
+# )
+# print("Computational complexity of vocoder model: %g" % (macs / 1))
+# print("Number of parameters in vocoder model: %g" % params)
 
 def constr(input_res):
     return {
         "x": torch.ones((1, 80, input_res[0])).to(device),
         "length": 1 * config["fs"],
     }
-
-
 macs, params = get_model_complexity_info(
     generator,
-    (1 * 82,),
+    (1 * 86,),
     input_constructor=constr,
     as_strings=False,
     print_per_layer_stat=True,
     verbose=True,
 )
-print("Computational complexity of vocoder model: %g" % (macs / 1))
+print("Computational complexity of vocoder model: %g" % macs)
 print("Number of parameters in vocoder model: %g" % params)
 
-validation_dataset = NoisySpeechDataset(
-    clean_val,
-    noise_val,
-    rir_val,
-    duration=None,
-    snr_mu_and_sigma=(0, 0),
-    apply_noise=True,
-    rir_percentage=0.75,
-    fs=48000,
-)
+validation_dataset = SpeechDataset(
+    clean_val, duration=None, fs=48000)
 
 val_dataloader = DataLoader(
     validation_dataset,
@@ -194,29 +173,28 @@ val_dataloader = DataLoader(
     0,
 )
 
-log_dir = os.path.join(config["chkpt_log_dir"], "logs", config["train_name"])
+log_dir = os.path.join(chkpt_log_config["chkpt_log_dir"], "vocoder", "logs", config["train_name"])
 os.makedirs(log_dir, exist_ok=True)
 
 sw_proposed = SummaryWriter(log_dir)
 
-mel_spec_config = (config["winsize"],
-                   config["num_mels"],
-                   config["fs"],
-                   config["hopsize"],
-                   config["winsize"],
-                   config["fmin"],
-                   config["fmax"],
-                   config["mel_pad_left"])
+mel_spec_config = {'n_fft': config["winsize"],
+                   'num_mels': config["num_mels"],
+                   'sampling_rate': config["fs"],
+                   'hop_size': config["hopsize"],
+                   'win_size': config["winsize"],
+                   'fmin': config["fmin"],
+                   'fmax': config["fmax"],
+                   'padding_left': config["mel_pad_left"]}
 
-mel_spec_config_loss = (config["winsize"],
-                        config["msl_num_mels"],
-                        config["fs"],
-                        config["hopsize"],
-                        config["winsize"],
-                        config["msl_fmin"],
-                        config["msl_fmax"],
-                        config["mel_pad_left"])
-
+mel_spec_config_loss = {'n_fft': config["winsize"],
+                        'num_mels': config["msl_num_mels"],
+                        'sampling_rate': config["fs"],
+                        'hop_size': config["hopsize"],
+                        'win_size': config["winsize"],
+                        'fmin': config["msl_fmin"],
+                        'fmax': config["msl_fmax"],
+                        'padding_left': config["mel_pad_left"]}
 
 def validate(step):
     generator.eval()
@@ -229,7 +207,7 @@ def validate(step):
     reconst_all = []
 
     for batch in tqdm.tqdm(val_dataloader):
-        (y, m) = batch
+        (y,) = batch
         y = torch.from_numpy(
             scipy.signal.resample_poly(
                 y.detach().cpu().numpy(), config["fs"], 48000, axis=1
@@ -239,20 +217,12 @@ def validate(step):
         valid_length = y.shape[1] // config["hopsize"] * config["hopsize"]
         y = y[:, :valid_length]
 
-        if "hifigan_chkpt" in config:
-            y *= 10**(5/10)
+        y_mel = mel_spectrogram(y, **mel_spec_config)
 
-        y_mel = mel_spectrogram(y, *mel_spec_config)
 
-        if config["val_clean_ref"]:
-            y_g_hat = y[:, None, :]
-        else:
-            with torch.no_grad():
-                y_g_hat = generator(y_mel, y.shape[1])
+        with torch.no_grad():
+            y_g_hat = generator(y_mel, y.shape[1])
 
-        if "hifigan_chkpt" in config:
-            y_g_hat *= 10**(-5/10)
-            y *= 10**(-5/10)
 
         reconst_all.append(y_g_hat[0, 0, :].detach().cpu().numpy())
         y_all.append(y[0, :].detach().cpu().numpy())
@@ -275,14 +245,10 @@ def validate(step):
     pesq_mean = np.mean(lengths_all * pesq_all) / np.mean(lengths_all)
     sig_mean = np.mean(lengths_all * sig_all) / np.mean(lengths_all)
 
-    wacc_proposed = compute_mean_wacc(
-        reconst_all, txt_val, config["fs"], asr_model=asr_model
-    )
 
     sw_proposed.add_scalar("MCD", mcd_mean, step)
     sw_proposed.add_scalar("PESQ-WB", pesq_mean, step)
     sw_proposed.add_scalar("DNSMOS-SIG", sig_mean, step)
-    sw_proposed.add_scalar("Wacc", wacc_proposed, step)
 
     for i in val_tensorboard_examples:
         sw_proposed.add_audio(
@@ -332,20 +298,26 @@ while True:
     continue_next_epoch = True
     pbar = tqdm.tqdm(train_dataloader)
     for batch in pbar:
-        (y, m) = batch
+        (y,) = batch
         y = y.to(device, non_blocking=True)
         valid_length = y.shape[1] // config["hopsize"] * config["hopsize"]
         y = y[:, :valid_length]
 
-        y_mel = mel_spectrogram(y, *mel_spec_config)
-        y_mel_for_loss = mel_spectrogram(10**(10/20)*y, *mel_spec_config_loss)
+        y_mel = mel_spectrogram(y, **mel_spec_config)
 
-        # multiply y and y_g_hat to scale up
-        y_g_hat = 10**(10/20)*generator(y_mel, y.shape[1])
-        y = 10**(10/20)*y
+        if dataset.LEGACY:
+            y_mel_for_loss = mel_spectrogram(10**(10/20)*y, **mel_spec_config_loss)
+
+            # multiply y and y_g_hat to scale up
+            y_g_hat = 10**(10/20)*generator(y_mel, y.shape[1])
+            y = 10**(10/20)*y
+        else:
+            y_mel_for_loss = mel_spectrogram(y, **mel_spec_config_loss)
+            # multiply y and y_g_hat to scale up
+            y_g_hat = generator(y_mel, y.shape[1])
 
         y_g_hat_mel = mel_spectrogram(
-            y_g_hat.squeeze(1), *mel_spec_config_loss)
+            y_g_hat.squeeze(1), **mel_spec_config_loss)
 
         optim_d.zero_grad()
 
@@ -396,18 +368,18 @@ while True:
         optim_g.step()
 
         steps += 1
+        
         # # STDOUT logging
-        if steps % 10 == 0:
-            printstr = (
-                "Steps : {:d}, GGradNorm: {:4.3f}, Gen Loss Total : {:4.3f}, Disc Loss Total : {:4.3f}, Mel-Spec. Loss : {:4.3f}".format(
-                    steps,
-                    grad_norm_g,
-                    loss_gen_all,
-                    loss_disc_all,
-                    loss_mel,
-                )
+        printstr = (
+            "Steps : {:d}, GGradNorm: {:4.3f}, Gen Loss Total : {:4.3f}, Disc Loss Total : {:4.3f}, Mel-Spec. Loss : {:4.3f}".format(
+                steps,
+                grad_norm_g,
+                loss_gen_all,
+                loss_disc_all,
+                loss_mel,
             )
-            pbar.set_description(printstr)
+        )
+        pbar.set_description(printstr)
 
         if steps % config["distinct_chkpt_interval"] == 0:
             g_path = "%s/g_%d" % (chkpt_dir, steps)

@@ -126,17 +126,20 @@ print("Computational complexity of vocoder model: %g" % macs)
 print("Number of parameters in vocoder model: %g" % params)
 
 
-def opus(y, fs, bitrate=6):
-    with tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as tmpfile1, tempfile.NamedTemporaryFile(suffix='.opus', mode='r+') as tmpfile2:
+def opus(y, fs, bitrate=6, ffmpeg_path='/home/stahl/miniconda3/envs/spear/bin/ffmpeg'):
+    with tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as tmpfile1,\
+        tempfile.NamedTemporaryFile(suffix='.opus', mode='r+') as tmpfile2,\
+        tempfile.NamedTemporaryFile(suffix='.wav', mode='r+') as tmpfile3:
         soundfile.write('%s' % tmpfile1.name, y, fs)
-        subprocess.call('ffmpeg -y -i %s  -c:a libopus -b:a %dK %s' %
-                        (tmpfile1.name, bitrate,
+        subprocess.call('%s -y -i %s  -c:a libopus -b:a %dK %s' %
+                        (ffmpeg_path, tmpfile1.name, bitrate,
                          tmpfile2.name), stdout=subprocess.DEVNULL,
                         stderr=subprocess.STDOUT, shell=True)
-        subprocess.call('ffmpeg -y -i %s -ar %d %s' %
-                        (tmpfile2.name, fs, tmpfile1.name), stdout=subprocess.DEVNULL,
+        subprocess.call('%s -y -i %s -ar %d %s' %
+                        (ffmpeg_path, tmpfile2.name, fs, tmpfile3.name),
+                        stdout=subprocess.DEVNULL,
                         stderr=subprocess.STDOUT, shell=True)
-        y, _ = soundfile.read('%s' % tmpfile1.name)
+        y, _ = soundfile.read('%s' % tmpfile3.name)
     return y.astype('float32')
 
 
@@ -262,8 +265,8 @@ for idx,(y,) in enumerate(tqdm.tqdm(val_dataloader)):
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 6))
         encodec12_all.append(
             10**(-10/20)*encodec(10**(10/20)*y[0, :].numpy(), 48000, 12))
-        if idx == 9:
-            break
+        # if idx == 9:
+        #     break
 
 
 lengths_all = np.array([y.shape[0] for y in clean_all])
@@ -286,8 +289,8 @@ for sw, sigs_method in zip(sws, sigs):
     mean_mos_est = np.mean(lengths_all * np.array(mos) / np.mean(lengths_all))
     mean_visqol = np.mean(lengths_all * np.array(visqol) / np.mean(lengths_all))
 
-    mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
-    # mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
+    # mean_wacc = compute_mean_wacc(sigs_method, txt_val[0:10], 48000, 'cuda')
+    mean_wacc = compute_mean_wacc(sigs_method, txt_val, 48000, 'cuda')
 
     sw.add_scalar('PESQ', mean_pesq, 0)
     sw.add_scalar('SIG', mean_sig, 0)
@@ -302,12 +305,12 @@ for sw, sigs_method in zip(sws, sigs):
     sw.add_scalar('Visqol', mean_visqol, 0)
 
 
-    # for i in val_tensorboard_examples:
-    #     sw.add_audio(
-    #         "%d" % i,
-    #         torch.from_numpy(sigs_method[i]),
-    #         global_step=0,
-    #         sample_rate=48000,
-    #     )
+    for i in val_tensorboard_examples:
+        sw.add_audio(
+            "%d" % i,
+            torch.from_numpy(sigs_method[i]),
+            global_step=0,
+            sample_rate=48000,
+        )
     sw.flush()
-    sw.close()
+    #sw.close()

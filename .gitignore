@@ -12,10 +12,13 @@ pretrained_vocoder/d_checkpoint
 *.out
 .vscode/launch.json
 
-tmp*
 data_directories.toml
 executable_paths.toml
 chkpt_log_dirs.toml
-WAV/*
-testResult/*
+
+*.wav
+*.flac
 *.png
+*.pdf
+*.csv
+*.zip
