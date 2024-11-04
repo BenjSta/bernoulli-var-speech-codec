@@ -14,7 +14,6 @@ from ptflops import get_model_complexity_info
 import torch
 from third_party.BigVGAN.meldataset import mel_spectrogram
 from collections import OrderedDict
-from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd, compute_estimated_metrics, compute_visqol
 
 from third_party.BigVGAN.models import (
     BigVGAN

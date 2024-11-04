@@ -1,5 +1,4 @@
 import pickle
-import warnings
 from dataset import SpeechDataset, load_paths
 import toml
 import numpy as np
@@ -10,24 +9,14 @@ from torch.utils.data import DataLoader
 import tqdm
 import os
 import torch
-from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_nisqa, compute_mcd, compute_estimated_metrics, compute_visqol, compute_f0_rmse
-import whisper
 import soundfile
-import time
-import tempfile
 import subprocess
 import glob
-from transformers import AutoProcessor, EncodecModel
 from third_party.BigVGAN.models import BigVGAN
 from third_party.BigVGAN.utils import load_checkpoint
 from third_party.BigVGAN.env import AttrDict
 from third_party.BigVGAN.meldataset import mel_spectrogram
-from ptflops import get_model_complexity_info
 from bvrnn import BVRNN
-import pandas as pd
-from audiotools import AudioSignal
-from third_party.AudioDec.utils.audiodec import AudioDec, assign_model
-MAKEUP_GAIN = 10.0
 
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
@@ -51,8 +40,6 @@ vocoder_config_bigger_sym = toml.load(
 vocoder_chkpt_path_bigger_sym = "pretrained_and_finetuned_vocoder_chkpts/bigvgan_base_sym"
 vocoder_config_bigger_sym_attr_dict = AttrDict(vocoder_config_bigger_sym)
 
-encodec_model = EncodecModel.from_pretrained(model_id)
-encodec_processor = AutoProcessor.from_pretrained(model_id)
 
 config = toml.load("configs_coding/config_varBitRate.toml")
 
@@ -61,8 +48,6 @@ try:
 except:
     raise RuntimeError(
         'Error loading chkpt_log_dirs.toml, please create it based on the corresponding default file')
-
-warnings.simplefilter(action="ignore", category=FutureWarning)
 
 torch.backends.cudnn.benchmark = True
 

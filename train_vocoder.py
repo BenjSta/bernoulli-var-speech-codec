@@ -5,9 +5,6 @@ import os
 config = toml.load("configs_vocoder_training/config_vocoder_non_causal_snake_bigger.toml")
 os.environ["CUDA_VISIBLE_DEVICES"] = config["cuda_visible_devices"]
 
-
-import whisper
-from metrics import compute_dnsmos, compute_pesq, compute_mean_wacc, compute_mcd
 from third_party.BigVGAN.env import AttrDict
 import platform
 import numpy as np
@@ -20,8 +17,6 @@ import itertools
 from ptflops import get_model_complexity_info
 import torch
 from third_party.BigVGAN.meldataset import mel_spectrogram
-from collections import OrderedDict
-
 
 config_attr_dict = AttrDict(config)
 
@@ -228,27 +223,6 @@ def validate(step):
         y_all.append(y[0, :].detach().cpu().numpy())
 
     lengths_all = np.array([y.shape[0] for y in y_all])
-    mcd_all = compute_mcd(y_all, reconst_all, config['fs'])
-    pesq_all = compute_pesq(y_all, reconst_all, config["fs"])
-    _, sig_all, _ = compute_dnsmos(reconst_all, config["fs"])
-
-    np.savetxt(
-        os.path.join(log_dir, "metrics%d.csv" % step),
-        np.stack((pesq_all, sig_all, mcd_all)).T,
-        fmt="%.3f",
-        delimiter=",",
-        header="PESQ-WB, DNSMOS-SIG, MCD",
-
-    )
-
-    mcd_mean = np.mean(lengths_all * mcd_all) / np.mean(lengths_all)
-    pesq_mean = np.mean(lengths_all * pesq_all) / np.mean(lengths_all)
-    sig_mean = np.mean(lengths_all * sig_all) / np.mean(lengths_all)
-
-
-    sw_proposed.add_scalar("MCD", mcd_mean, step)
-    sw_proposed.add_scalar("PESQ-WB", pesq_mean, step)
-    sw_proposed.add_scalar("DNSMOS-SIG", sig_mean, step)
 
     for i in val_tensorboard_examples:
         sw_proposed.add_audio(

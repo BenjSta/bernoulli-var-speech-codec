@@ -5,9 +5,6 @@ import os
 config = toml.load("configs_finetuning/config_vocoder_causal_snake_doubleseg_bvrnn.toml")
 os.environ["CUDA_VISIBLE_DEVICES"] = config["cuda_visible_devices"]
 
-
-import whisper
-from metrics import compute_visqol, compute_pesq, compute_nisqa
 from third_party.BigVGAN.env import AttrDict
 import platform
 import numpy as np
@@ -20,7 +17,6 @@ import itertools
 from ptflops import get_model_complexity_info
 import torch
 from third_party.BigVGAN.meldataset import mel_spectrogram
-from collections import OrderedDict
 from bvrnn import BVRNN
 
 config_attr_dict = AttrDict(config)
@@ -328,23 +324,7 @@ def validate(step):
 
     
     lengths_all = np.array([y.shape[0] for y in y_all])
-    _, _, _, _, _, nisqa_all, _, _, _, _ = compute_nisqa(reconst_all, config["fs"])
-    visqol_all = compute_visqol(executables['visqol_base'],  executables['visqol_bin'], 
-                                y_all, reconst_all, config['fs'])
-    pesq_all = compute_pesq(y_all, reconst_all, config["fs"])
     
-    visqol_mean = np.mean(lengths_all * visqol_all) / np.mean(lengths_all)
-    pesq_mean = np.mean(lengths_all * pesq_all) / np.mean(lengths_all)
-    nisqa_mean = np.mean(lengths_all * nisqa_all) / np.mean(lengths_all)
-
-    composite_mean = (visqol_mean + pesq_mean + nisqa_mean) / 3
-
-
-    sw_proposed.add_scalar("ViSQOL", visqol_mean, step)
-    sw_proposed.add_scalar("PESQ", pesq_mean, step)
-    sw_proposed.add_scalar("NISQA", nisqa_mean, step)
-    sw_proposed.add_scalar("Composite", composite_mean, step)
-
     for i in val_tensorboard_examples:
         b = bitrates[i]
         if len(b) == 1:
