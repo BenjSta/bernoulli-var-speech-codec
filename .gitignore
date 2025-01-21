@@ -4,21 +4,6 @@
 **/.DS_Store
 **/._.DS_Store
 
-# vocoder model
-pretrained_vocoder/g_checkpoint
-pretrained_vocoder/d_checkpoint
-
 *.pyc
 *.out
 .vscode/launch.json
-
-data_directories.toml
-executable_paths.toml
-chkpt_log_dirs.toml
-
-*.wav
-*.flac
-*.png
-*.pdf
-*.csv
-*.zip
