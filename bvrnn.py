@@ -1,10 +1,27 @@
+# This code loosely follows the implementations in
+# https://github.com/emited/VariationalRecurrentNeuralNetwork
+# and 
+# https://github.com/XiaoyuBIE1994/DVAE
+#
+# (Benjamin Stahl, IEM Graz, 2024)
+
 import torch
 from torch import nn
-from torch import Tensor, LongTensor
+from torch import Tensor
 from typing import Tuple
 
 class BVRNN(nn.Module):
     def __init__(self, x_dim, h_dim, z_dim, mean_std_mel, log_sigma_init, variableBit = False):
+        '''
+        Bernoulli-valued Variational Recurrent Neural Network
+
+        x_dim: dimensionality of the input
+        h_dim: dimensionality of the hidden state
+        z_dim: dimensionality of the latent variable
+        mean_std_mel: mean and std of the mel spectrogram
+        log_sigma_init: initial value of the log of the scale of the data noise (to balance the KLD and the reconstruction loss)
+        variableBit: whether to use variable bitrate
+        '''
         super(BVRNN, self).__init__()
   
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -33,7 +50,6 @@ class BVRNN(nn.Module):
             nn.ELU())
         
         self.phi_z = nn.Sequential(
-            # nn.Linear(z_dim + var_dim, h_dim),
             nn.Linear(z_dim, h_dim),
             nn.ELU(),
             nn.Linear(h_dim, h_dim),
@@ -41,7 +57,6 @@ class BVRNN(nn.Module):
             nn.Linear(h_dim, h_dim),
             nn.ELU())
         
-        #encoder
         self.enc = nn.Sequential(
             nn.Linear(h_dim + h_dim, h_dim),
             nn.ELU(),
@@ -69,7 +84,14 @@ class BVRNN(nn.Module):
 
 
     def forward(self, y: Tensor, p_use_gen: float, greedy: bool, varBitrate: Tensor)->Tuple[Tensor, Tensor]:
-        
+        '''
+        y: input tensor, shape (batch, frames, x_dim)
+        p_use_gen: probability of using the generator
+        greedy: whether to sample (False) or just round (True) the binary probabilities
+        varBitrate: tensor of the variable bitrate in bits per frame, shape (batch, frames), will be ignored if variableBit is False
+
+        returns: reconstructed tensor (shape (batch, frames, x_dim)), KLD loss (scalar)
+        '''
         y = (y - self.mean_mel[None, None, :]) / self.std_mel[None, None, :]
 
         all_dec_mean = []
@@ -81,22 +103,14 @@ class BVRNN(nn.Module):
         h2 = torch.zeros(1, y.size(0), self.h_dim, device=self.device)
         if self.varBit:
             bit_cond_helper = torch.arange(0, self.z_dim, 1).to(y.device)
-            bit_cond = ((varBitrate[:,:,None] - 1) == bit_cond_helper).float()
             bit_mask = varBitrate[:,:,None] > bit_cond_helper[None,None,:]
         else:
-            bit_cond = torch.zeros((0,0,0), device=y.device)
-            bit_cond_helper = torch.zeros((0,0,0), device=y.device)
             bit_mask = torch.zeros((0,0,0), device=y.device)
 
         for t in range(y.size(1)):
             random_num = torch.rand([])
             phi_x_t = phi_x[:, t, :]
             # if self.varBit:
-            #      phi_x_t = torch.cat((phi_x[:, t, :], bit_cond[:,t,:]), dim=-1)
-            #      enc_input = torch.cat((phi_x_t, bit_cond[:,t,:]), dim=-1)
-            #  else:
-            #      phi_x_t = phi_x[:, t, :]
-            #      enc_input = phi_x_t
 
             if random_num < p_use_gen:
                 enc_t = self.enc(torch.cat([phi_x_t, h2[-1, :, :]], 1))
@@ -146,7 +160,16 @@ class BVRNN(nn.Module):
         return torch.stack(all_dec_mean).permute(1, 0, 2), torch.mean(torch.stack(kld_loss))
     
 
-    def encode(self, y: Tensor,  varBitrate: Tensor, h2: Tensor)->Tuple[Tensor, Tensor]:
+    def encode(self, y: Tensor,  varBitrate: Tensor, h: Tensor)->Tuple[Tensor, Tensor]:
+        '''
+        Just do the encoding part of the forward pass with greedy sampling
+
+        y: input tensor, shape (batch, frames, x_dim)
+        varBitrate: tensor of the variable bitrate in bits per frame, shape (batch, frames), will be ignored if variableBit is False
+        h: initial hidden state, shape (1, batch, h_dim)
+
+        returns: latent tensor (shape (batch, frames, z_dim)), hidden state tensor (shape (1, batch, h_dim))
+        '''
         y = (y - self.mean_mel[None, None, :]) / self.std_mel[None, None, :]
 
         all_z = []
@@ -154,18 +177,16 @@ class BVRNN(nn.Module):
 
         phi_x = self.phi_x(y)
 
-        #h2 = torch.zeros(1, y.size(0), self.h_dim, device=self.device)
         if self.varBit:
             bit_cond_helper = torch.arange(0, self.z_dim, 1).to(y.device)
             bit_mask = varBitrate[:,:,None] > bit_cond_helper[None,None,:]
         else:
-            bit_cond_helper = torch.zeros((0,0,0), device=y.device)
             bit_mask = torch.zeros((0,0,0), device=y.device)
 
         for t in range(y.size(1)):
             phi_x_t = phi_x[:, t, :]
 
-            enc_t = self.enc(torch.cat([phi_x_t, h2[-1, :, :]], 1))
+            enc_t = self.enc(torch.cat([phi_x_t, h[-1, :, :]], 1))
 
             z_t = torch.round(enc_t)
 
@@ -178,25 +199,31 @@ class BVRNN(nn.Module):
             
             
             
-            dec_t = self.dec(torch.cat([phi_z_t, h2[-1, :, :]], 1))
+            dec_t = self.dec(torch.cat([phi_z_t, h[-1, :, :]], 1))
             
             phi_x_t_gen = self.phi_x((dec_t - self.mean_mel[None, :]) / self.std_mel[None, :])
-            all_h.append(h2[0, :, :])
-            _, h2 = self.rnn(torch.cat([phi_x_t_gen, phi_z_t], 1).unsqueeze(1), h2)
+            all_h.append(h[0, :, :])
+            _, h = self.rnn(torch.cat([phi_x_t_gen, phi_z_t], 1).unsqueeze(1), h)
             
 
         return torch.stack(all_z).permute(1, 0, 2), torch.stack(all_h).permute(1, 0, 2)
     
-    def decode(self, z: Tensor, h2: Tensor)->Tuple[Tensor, Tensor]:
+    def decode(self, z: Tensor, h: Tensor)->Tuple[Tensor, Tensor]:
+        '''
+        Just do the decoding part of the forward pass
+
+        z: latent tensor, shape (batch, frames, z_dim)
+        h: initial hidden state, shape (1, batch, h_dim)
+
+        returns: reconstructed tensor (shape (batch, frames, x_dim)), hidden state tensor (shape (1, batch, h_dim))
+        '''
         all_dec = []
-        #h2 = torch.zeros(1, z.size(0), self.h_dim, device=self.device)
 
         for t in range(z.size(1)):
             phi_z_t = self.phi_z(z[:, t, :])
-            dec_t = self.dec(torch.cat([phi_z_t, h2[-1, :, :]], 1))
+            dec_t = self.dec(torch.cat([phi_z_t, h[-1, :, :]], 1))
             all_dec.append(dec_t)
             phi_x_t_gen = self.phi_x((dec_t - self.mean_mel[None, :]) / self.std_mel[None, :])
-            _, h2 = self.rnn(torch.cat([phi_x_t_gen, phi_z_t], 1).unsqueeze(1), h2)
+            _, h = self.rnn(torch.cat([phi_x_t_gen, phi_z_t], 1).unsqueeze(1), h)
 
-
-        return torch.stack(all_dec).permute(1, 0, 2), h2
+        return torch.stack(all_dec).permute(1, 0, 2), h
