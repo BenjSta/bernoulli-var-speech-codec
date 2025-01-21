@@ -54,7 +54,7 @@ speech = speech / np.max(np.abs(speech))
 # encode with 3kbps and decode in a single step
 decoded = codec_model(torch.from_numpy(speech).float()[None, :], 3000)[0, :].detach().cpu().numpy()
 
-soundfile.write('my_speech_decoded.wav', decoded, )
+soundfile.write('my_speech_decoded.wav', decoded, 22050)
 ```
 
 The encoding and decoding steps can also be done separately:
