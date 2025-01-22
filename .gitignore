@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+._.DS_Store
+**/.DS_Store
+**/._.DS_Store
+
+*.pyc
+*.out
+.vscode/launch.json
+*.wav

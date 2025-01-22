@@ -1,0 +1,1 @@
+The speech recording input material is taken from the VCTK dataset (https://datashare.ed.ac.uk/handle/10283/3443, licensed under the Creative Commons Attribution 4.0 International license, cf. `./LICENSE.md`) and from the TSP speech database (https://www.mmsp.ece.mcgill.ca/Documents/Data/, licensed under a Simplified BSD license, cf. `./TSP_Licence.html`).
