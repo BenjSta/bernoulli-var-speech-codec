@@ -7,4 +7,4 @@
 *.pyc
 *.out
 .vscode/launch.json
-./*.wav
+*.wav
