@@ -35,8 +35,8 @@ class BVRNNCodecModel(nn.Module):
 
         self.vocoder = BigVGAN(AttrDict(conf['vocoder_config']))
 
-        bvrnn_chkpt = torch.load(bvrnn_chkpt_path)
-        vocoder_chkpt = torch.load(vocoder_chkpt_path)
+        bvrnn_chkpt = torch.load(bvrnn_chkpt_path, map_location=torch.device('cpu'), weights_only=True)
+        vocoder_chkpt = torch.load(vocoder_chkpt_path, map_location=torch.device('cpu'), weights_only=True)
 
         self.bvrnn.load_state_dict(bvrnn_chkpt['vrnn'])
         self.vocoder.load_state_dict(vocoder_chkpt['generator'])

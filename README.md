@@ -16,21 +16,24 @@ This repository provides code for the approach described in
 ```
 
 ## Application
-The proposed codec is used to code speech directly into binary codes in real time (total algorithmic latency: 34.8 ms). The model weights provided have been trained on *clean speech only*. Note that in order to use the model for noisy speech, retraining of the binary variational recurrent mel spectrogram coder as well as fine-tuning of the vocoder would be necessary.
+The proposed codec is used to code speech directly into binary codes in real time (total algorithmic latency: 34.8 ms). The model weights provided have been trained on **clean speech only**. Note that in order to use the model for **noisy speech**, retraining of the binary variational recurrent mel spectrogram coder as well as fine-tuning of the vocoder would be necessary.
 
 
 ## Dependencies
-Please have the following packages installed
+Tested with Python 3.11. Please have the following packages installed:
 
 - torch
 - numpy
 - scipy
+- librosa
 - soundfile
-
+- toml
+- tqdm
+- matplotlib
 
 ## Usage
 
-Simply run the codec as follows
+Simply run the codec as follows:
 
 ```python
 from bvrnn_codec_model import BVRNNCodecModel
@@ -41,7 +44,7 @@ import scipy.signal
 
 # instantiate the codec
 codec_model = BVRNNCodecModel()
-BVRNNCodecModel.eval()
+codec_model.eval()
 
 # load a speech file, use first channel:
 speech, fs_speech = soundfile.read('my_speech.wav', always_2d=True)
